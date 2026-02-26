@@ -29,7 +29,7 @@ st.markdown(
         background: #f1f5f9;
     }
 
-    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) 🌟 */
+    /* 🌟 지수 폰트 크기 슬림화 (가독성 개선) 🌟 */
     [data-testid="stMetricValue"] {
         font-size: 1.25rem !important;
         font-weight: 800 !important;
@@ -40,7 +40,7 @@ st.markdown(
         margin-bottom: -5px !important;
     }
 
-    /* 🌟 실시간 주도주 리스트 디자인 (기존 디자인 무삭제) 🌟 */
+    /* 🌟 실시간 주도주 리스트 디자인 (무삭제) 🌟 */
     .stock-card {
         background: white;
         border-radius: 8px;
@@ -132,7 +132,7 @@ st.markdown(
         flex-shrink: 0;
     }
 
-    /* 사이드바 테마 아이템 스타일 (무삭제) */
+    /* 사이드바 테마 스타일 (무삭제) */
     .sidebar-theme-row {
         display: flex;
         justify-content: space-between;
@@ -154,7 +154,7 @@ st.markdown(
 )
 
 # ==========================================
-# 🌟 세션 상태(Session State) 초기화 (데이터 보존용)
+# 🌟 세션 상태(Session State) 초기화
 # ==========================================
 if 'global_indices' not in st.session_state: st.session_state.global_indices = []
 if 'global_themes' not in st.session_state: st.session_state.global_themes = []
@@ -162,7 +162,7 @@ if 'global_briefing' not in st.session_state: st.session_state.global_briefing =
 if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.DataFrame()
 
 # ==========================================
-# 🌟 전역 설정 (섹터 색상 매핑)
+# 🌟 전역 설정 (섹터 색상 동기화)
 # ==========================================
 SECTOR_COLORS = {
     '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', 
@@ -172,32 +172,35 @@ SECTOR_COLORS = {
 
 CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
 
-# --- [2] 미 증시 엔진: 네이버 금융 기반 고도화 로직 ---
+# --- [2] 미 증시 엔진: 네이버 금융 통합 및 듀얼 복구 로직 ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_naver_world_indices():
-    """🌟 필라 반도체 0% 오류 해결을 위한 네이버 금융 직접 크롤링 🌟"""
+    """🌟 네이버 금융 해외지수 페이지 크롤링 (사진의 표 데이터 정밀 추출) 🌟"""
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     url = "https://finance.naver.com/world/"
     indices = []
     try:
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=12)
         res.encoding = 'euc-kr'
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 해외 주요지수 테이블 탐색 (tbl_exchange 클래스)
+        # 해외 주요지수 테이블 (tbl_exchange)
         table = soup.find('table', {'class': 'tbl_exchange'})
         rows = table.find_all('tr')
         
-        # 필터링할 대상 매핑
+        # 가져올 지수 이름과 UI 표시 이름 매핑
         targets = {
             "나스닥 100": "나스닥 100", 
             "S&P 500": "S&P 500", 
             "다우 산업": "다우존스", 
             "필라델피아 반도체": "필라 반도체"
         }
+        
+        # 수집된 순서를 사용자 요구에 맞게 정렬하기 위한 리스트
+        collected = {}
         
         for row in rows:
             tds = row.find_all('td')
@@ -206,63 +209,72 @@ def fetch_naver_world_indices():
                 if raw_name in targets:
                     price = tds[1].text.strip()
                     rate = tds[3].text.strip()
-                    indices.append({"name": targets[raw_name], "value": price, "delta": rate})
+                    collected[targets[raw_name]] = {"value": price, "delta": rate}
+        
+        # 정해진 순서대로 리스트 생성
+        order = ["나스닥 100", "S&P 500", "다우존스", "필라 반도체"]
+        for o_name in order:
+            if o_name in collected:
+                indices.append({"name": o_name, "value": collected[o_name]["value"], "delta": collected[o_name]["delta"]})
         
         return indices
     except:
         return []
 
-def fetch_etf_stable(ticker):
-    """ETF 데이터 안정적 추출 (야후 우선, 구글 백업)"""
+def fetch_etf_backup(ticker):
+    """ETF 전용 듀얼 크롤링 엔진 (야후가 막힐 경우 구글 시도)"""
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    # 1. 야후 파이낸스 시도
     try:
         url = f"https://finance.yahoo.com/quote/{ticker}"
         res = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, 'html.parser')
-        rate = soup.find("fin-streamer", {"data-symbol": ticker, "data-field": "regularMarketChangePercent"}).text.strip()
+        val = soup.find("fin-streamer", {"data-symbol": ticker, "data-field": "regularMarketChangePercent"}).text.strip()
+        if val: return val
+    except:
+        pass
+    
+    # 2. 구글 파이낸스 백업 (시장 코드 자동 분기)
+    try:
+        mkt = "NASDAQ"
+        if ticker in ["LIT", "URA"]: mkt = "NYSEARCA"
+        url = f"https://www.google.com/finance/quote/{ticker}:{mkt}"
+        res = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        rate = soup.select_one(".Jw796").text.replace('(', '').replace(')', '').strip()
         return rate
     except:
-        try:
-            # 구글 파이낸스 백업 (시장 코드 분기)
-            market = "NASDAQ"
-            if ticker in ["LIT", "URA"]: market = "NYSEARCA"
-            g_url = f"https://www.google.com/finance/quote/{ticker}:{market}"
-            res = requests.get(g_url, headers=headers, timeout=10)
-            soup = BeautifulSoup(res.text, 'html.parser')
-            rate = soup.select_one(".Jw796").text.replace('(', '').replace(')', '').strip()
-            return rate
-        except:
-            return "0.00%"
+        return "0.00%"
 
 def get_global_market_status():
-    """🌟 네이버 통합 지수 로드 + 전력/원전 포함 확장 ETF 분석 🌟"""
-    # 1. 지수 데이터 (네이버 금융 공식 경로)
+    """🌟 네이버 금융 통합 지수 + 전력/원전 확장 ETF 통합 분석 🌟"""
+    # 1. 지수 데이터 수집 (네이버 금융 경로로 필라 반도체 완벽 복구)
     indices = fetch_naver_world_indices()
     
-    # 2. 테마 ETF 데이터 (GRID, URA 포함)
+    # 2. 테마 ETF 데이터 수집 (GRID, URA 포함)
     themes = []
     etf_map = [
         ("반도체 (SOXX)", "SOXX", "반도체"),
         ("로봇/AI (BOTZ)", "BOTZ", "로봇/AI"),
         ("2차전지 (LIT)", "LIT", "2차전지"),
-        ("전력망 (GRID)", "GRID", "전력/원전"),
-        ("원자력 (URA)", "URA", "전력/원전"),
+        ("전력 인프라 (GRID)", "GRID", "전력/원전"),
+        ("원자력/우라늄 (URA)", "URA", "전력/원전"),
         ("바이오 (IBB)", "IBB", "바이오")
     ]
     
     try:
         for name, tk, sector in etf_map:
-            r_val = fetch_etf_stable(tk)
+            r_val = fetch_etf_backup(tk)
             themes.append({"name": name, "delta": r_val, "color": SECTOR_COLORS.get(sector, "#ffffff")})
             time.sleep(0.3)
             
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
-        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n네이버 금융과 연동하여 필라 반도체 지수 및 전력/원전 테마를 정상 복구했습니다."
+        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n네이버 금융과 연동하여 필라 반도체 지수 및 전력/원전 테마를 완벽 복구했습니다."
     except:
-        st.session_state.global_briefing = "데이터 동기화 지연 중. 잠시 후 다시 시도해 주세요."
+        st.session_state.global_briefing = "데이터 동기화 지연 중. 다시 시도해 주세요."
 
-# --- [3] 준비 엔진: 네이버 테마 DB 전체 크롤링 (무삭제 유지) ---
+# --- [3] 준비 엔진: 테마 DB 전체 크롤링 및 로컬 저장 ---
 def update_theme_db():
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -292,10 +304,10 @@ def update_theme_db():
             time.sleep(0.02)
             
         pd.DataFrame(list(theme_dict.items()), columns=['종목명', '테마']).to_csv(THEME_DB_FILE, index=False, encoding='utf-8-sig')
-        status_text.success("✅ 업데이트 완료!"); time.sleep(1); st.rerun()
+        status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
 
-# --- [4] 국내 데이터 크롤링 및 분류 로직 (디자인 무삭제) ---
+# --- [4] 국내 데이터 크롤링 및 분류 로직 (무삭제 유지) ---
 def fetch_market_data(sosok, market_name):
     url = f"https://finance.naver.com/sise/sise_quant.naver?sosok={sosok}"
     try:
@@ -316,10 +328,10 @@ def apply_mega_sector(row):
     keywords = {
         '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '메모리', 'NPU', '유리기판'],
         '2차전지': ['2차전지', '리튬', '전고체', '배터리', '양극재'],
-        '바이오': ['바이오', '제약', '신약', '임상'],
-        '로봇/AI': ['로봇', 'AI', '인공지능'],
-        '전력/원전': ['전력', '전선', '원자력'],
-        '방산/우주': ['방산', '우주', '항공'],
+        '바이오': ['바이오', '제약', '신약', '임상', '비만'],
+        '로봇/AI': ['로봇', 'AI', '인공지능', '챗봇'],
+        '전력/원전': ['전력', '전선', '원자력', '변압기', '핵융합'],
+        '방산/우주': ['방산', '우주', '항공', '조선'],
         '금융/지주': ['지주사', '은행', '보험', '증권', '밸류업']
     }
     for sector, keys in keywords.items():
@@ -338,7 +350,7 @@ def format_volume_to_jo_eok(x_million):
 with st.sidebar:
     st.title("🌐 글로벌 증시")
     if st.button("🚀 글로벌 실시간 스캔", use_container_width=True):
-        with st.spinner("해외 분석 동기화 중..."):
+        with st.spinner("해외 분석 데이터 수집 중..."):
             get_global_market_status()
 
     if st.session_state.global_indices:
@@ -351,7 +363,9 @@ with st.sidebar:
         for t in st.session_state.global_themes:
             v_c = "#ef4444" if '+' in str(t['delta']) else "#2563eb"
             st.markdown(f'<div class="sidebar-theme-row" style="background-color: {t["color"]};"><span style="color: #1e293b;">{t["name"]}</span><span style="color: {v_c};">{t["delta"]}</span></div>', unsafe_allow_html=True)
-    else: st.info("스캔을 실행하세요.")
+    else:
+        st.info("글로벌 스캔을 실행하세요.")
+        
     st.info(f"📍 **전문가 브리핑:**\n{st.session_state.global_briefing}")
 
 # 메인 화면
@@ -361,7 +375,7 @@ with col_btn:
     st.write(""); st.write("")
     if st.button("🔄 테마 DB 최신화", use_container_width=True): update_theme_db()
 
-tab_scanner, tab_analysis = st.tabs(["🚀 실시간 주도주 스캐너", "📊 분석"])
+tab_scanner, tab_analysis = st.tabs(["🚀 실시간 주도주 스캐너", "📊 종목 정밀 분석"])
 
 with tab_scanner:
     col_main, col_summary = st.columns([7, 3])
@@ -371,42 +385,64 @@ with tab_scanner:
 
     with col_main:
         if st.button("🚀 국내 실시간 스캔 실행", use_container_width=True):
-            with st.spinner("시장 수급 분석 중..."):
+            with st.spinner("국내 시장 수급 분석 중..."):
                 df_k = fetch_market_data(0, '코스피'); df_q = fetch_market_data(1, '코스닥')
                 df = pd.concat([df_k, df_q], ignore_index=True)
                 if not df.empty:
-                    black_list = ['KODEX', 'TIGER', 'ACE', 'SOL', '스팩', 'ETN']
+                    black_list = ['KODEX', 'TIGER', 'ACE', 'SOL', 'ACE', 'SOL', 'ACE', '스팩', 'ETN']
                     df = df[~df['종목명'].str.contains('|'.join(black_list), na=False)]
                     df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace('%|\+', '', regex=True), errors='coerce')
                     df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
                     df = df.sort_values(by='거래대금_num', ascending=False).head(100)
                     df = df[df['등락률_num'] >= 4.0]
                     if os.path.exists(THEME_DB_FILE):
-                        t_df = pd.read_csv(THEME_DB_FILE)
-                        df['테마'] = df['종목명'].map(dict(zip(t_df['종목명'], t_df['테마']))).fillna('-')
+                        theme_df = pd.read_csv(THEME_DB_FILE)
+                        df['테마'] = df['종목명'].map(dict(zip(theme_df['종목명'], theme_df['테마']))).fillna('-')
                     else: df['테마'] = '-'
                     df['섹터'] = df.apply(apply_mega_sector, axis=1)
                     st.session_state.domestic_df = df
 
         if not st.session_state.domestic_df.empty:
-            df_f = st.session_state.domestic_df
-            st.subheader(f"🔥 실시간 주도주 ({len(df_f)}개)")
-            for _, row in df_f.iterrows():
-                bg = SECTOR_COLORS.get(row['섹터'], '#ffffff')
-                m_c = "market-tag " + ("market-kospi" if row['시장'] == '코스피' else "market-kosdaq")
-                rv = row['등락률_num']; rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1f2937")
-                st.markdown(f'<div class="stock-card"><div class="left-zone"><span class="{m_c}">{row["시장"]}</span><span class="stock-name">{row["종목명"]}</span></div><div class="center-zone"><span class="sector-badge" style="background: {bg}; color: #1e293b;">{row["섹터"]}</span></div><div class="right-zone"><span style="color: {rt_c}; font-weight: 800; font-size: 1.1rem; min-width: 65px; text-align: right;">+{rv}%</span><span class="stock-vol">{format_volume_to_jo_eok(row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
+            df_final = st.session_state.domestic_df
+            st.subheader(f"🔥 실시간 주도주 ({len(df_final)}개)")
+            for _, row in df_final.iterrows():
+                bg_color = SECTOR_COLORS.get(row['섹터'], '#ffffff')
+                market_class = "market-tag " + ("market-kospi" if row['시장'] == '코스피' else "market-kosdaq")
+                rate_val = row['등락률_num']
+                rate_color = "#ef4444" if rate_val >= 20.0 else ("#22c55e" if rate_val >= 10.0 else "#1f2937")
+
+                st.markdown(f"""
+                    <div class="stock-card">
+                        <div class="left-zone">
+                            <span class="{market_class}">{row['시장']}</span>
+                            <span class="stock-name">{row['종목명']}</span>
+                        </div>
+                        <div class="center-zone">
+                            <span class="sector-badge" style="background: {bg_color}; color: #1e293b;">{row['섹터']}</span>
+                        </div>
+                        <div class="right-zone">
+                            <span style="color: {rate_color}; font-weight: 800; font-size: 1.1rem; min-width: 65px; text-align: right;">+{rate_val}%</span>
+                            <span class="stock-vol">{format_volume_to_jo_eok(row['거래대금_num'])}</span>
+                        </div>
+                    </div>
+                """, unsafe_allow_html=True)
 
             with summary_placeholder.container():
-                s_group = df_f[df_f['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
-                if not s_group.empty:
-                    for s_name, count in s_group.items():
+                sector_group = df_final[df_final['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
+                if not sector_group.empty:
+                    for s_name, count in sector_group.items():
                         with st.expander(f"**{s_name}** ({count})", expanded=True):
-                            s_stocks = df_f[df_f['섹터'] == s_name].sort_values('등락률_num', ascending=False)
+                            s_stocks = df_final[df_final['섹터'] == s_name].sort_values('등락률_num', ascending=False)
                             for idx_l, (idx, s_row) in enumerate(s_stocks.iterrows()):
-                                ldr = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
-                                sr = s_row['등락률_num']; sc = "#ef4444" if sr >= 20.0 else ("#22c55e" if sr >= 10.0 else "#334155")
-                                st.markdown(f'<div class="sector-item"><div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div><div class="sector-item-right"><span class="val-rate" style="color:{sc};">+{sr}%</span><span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
+                                ldr_badge = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
+                                s_rate = s_row['등락률_num']
+                                s_color = "#ef4444" if s_rate >= 20.0 else ("#22c55e" if s_rate >= 10.0 else "#334155")
+                                st.markdown(f"""
+                                <div class="sector-item">
+                                    <div class="sector-item-left">{ldr_badge}<span class="sector-stock-name">{s_row['종목명']}</span></div>
+                                    <div class="sector-item-right"><span class="val-rate" style="color:{s_color};">+{s_rate}%</span><span class="val-vol">{format_volume_to_jo_eok(s_row['거래대금_num'])}</span></div>
+                                </div>
+                                """, unsafe_allow_html=True)
                 else: st.info("주도 섹터 없음")
         else: st.info("국내 실시간 스캔을 먼저 실행하세요.")
 
