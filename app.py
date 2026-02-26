@@ -30,7 +30,7 @@ else:
     model = None
 
 # ==========================================
-# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS (기존 디자인 무삭제 유지)
+# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS (디자인 대폭 추가)
 # ==========================================
 st.markdown(
     """
@@ -45,7 +45,7 @@ st.markdown(
         background: #f1f5f9;
     }
 
-    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) 🌟 */
+    /* 🌟 지수 폰트 크기 슬림화 */
     [data-testid="stMetricValue"] {
         font-size: 1.25rem !important;
         font-weight: 800 !important;
@@ -56,127 +56,48 @@ st.markdown(
         margin-bottom: -5px !important;
     }
 
-    /* 🌟 실시간 주도주 리스트 디자인 (무삭제 유지) 🌟 */
+    /* 🌟 실시간 주도주 리스트 디자인 */
     .stock-card {
-        background: white;
-        border-radius: 8px;
-        padding: 10px 14px;
-        margin-bottom: 6px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        border-left: 5px solid #e2e8f0;
+        background: white; border-radius: 8px; padding: 10px 14px; margin-bottom: 6px;
+        display: flex; justify-content: space-between; align-items: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05); border-left: 5px solid #e2e8f0;
     }
-
-    /* 구역별 비율 조정 */
     .left-zone { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; }
     .center-zone { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; margin-left: 10px; }
     .right-zone { display: flex; align-items: center; gap: 15px; flex: 1; justify-content: flex-end; }
-
     .stock-name { font-weight: 700; font-size: 1rem; color: #1e293b; white-space: nowrap; }
-    
-    .market-tag { 
-        font-size: 0.65rem; 
-        font-weight: 800; 
-        padding: 2px 5px; 
-        border-radius: 4px;
-        white-space: nowrap;
-    }
+    .market-tag { font-size: 0.65rem; font-weight: 800; padding: 2px 5px; border-radius: 4px; white-space: nowrap; }
     .market-kospi { background-color: #dbeafe; color: #1e40af; }
     .market-kosdaq { background-color: #ffedd5; color: #9a3412; }
+    .sector-badge { padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; border: 1px solid #e2e8f0; white-space: nowrap; }
 
-    .sector-badge {
-        padding: 2px 10px;
-        border-radius: 12px;
-        font-size: 0.75rem;
-        font-weight: 700;
-        border: 1px solid #e2e8f0;
-        white-space: nowrap;
-    }
+    /* 🌟 우측 섹터 리스트 칼정렬 */
+    .sector-item { font-size: 0.85rem; color: #334155; padding: 6px 0; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px inset #f1f5f9; width: 100%; }
+    .sector-item-left { display: flex; align-items: center; flex: 1; overflow: hidden; }
+    .sector-stock-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sector-item-right { display: flex; align-items: center; justify-content: flex-end; }
+    .val-rate { width: 65px; text-align: right; font-weight: 800; margin-right: 12px; }
+    .val-vol { width: 75px; text-align: right; color: #64748b; font-size: 0.8rem; }
+    .leader-label { font-size: 0.65rem; background: #ef4444; color: white; padding: 1px 4px; border-radius: 3px; margin-right: 5px; flex-shrink: 0; }
 
-    /* 🌟 우측 섹터 리스트 칼정렬 (일직선 정렬 로직) 🌟 */
-    .sector-item {
-        font-size: 0.85rem;
-        color: #334155;
-        padding: 6px 0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 1px inset #f1f5f9;
-        width: 100%;
+    /* 🌟 정밀 분석 탭 전용 "프리미엄 카드" 스타일 (새로 추가됨) 🌟 */
+    .sector-group-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; margin-top: 25px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 2px solid #cbd5e1; }
+    .analysis-card {
+        background: #ffffff; border-radius: 10px; padding: 16px; margin-bottom: 12px;
+        border: 1px solid #e2e8f0; border-left: 5px solid #3b82f6; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        transition: transform 0.2s ease;
     }
-
-    .sector-item-left {
-        display: flex;
-        align-items: center;
-        flex: 1;
-        overflow: hidden;
-    }
-    .sector-stock-name {
-        font-weight: 700;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .sector-item-right {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-    }
-    .val-rate {
-        width: 65px;
-        text-align: right;
-        font-weight: 800;
-        margin-right: 12px;
-    }
-    .val-vol {
-        width: 75px;
-        text-align: right;
-        color: #64748b;
-        font-size: 0.8rem;
-    }
-
-    .leader-label {
-        font-size: 0.65rem;
-        background: #ef4444;
-        color: white;
-        padding: 1px 4px;
-        border-radius: 3px;
-        margin-right: 5px;
-        flex-shrink: 0;
-    }
-
-    /* 🌟 정밀 분석 탭 전용 리스트 스타일 🌟 */
-    .analysis-list-container {
-        background: white;
-        border-radius: 12px;
-        padding: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-    .analysis-row {
-        font-size: 1rem;
-        padding: 12px 0;
-        border-bottom: 1px solid #f1f5f9;
-        line-height: 1.6;
-        color: #1e293b;
-    }
-    .analysis-row:last-child { border-bottom: none; }
-    .analysis-stock-hl { font-weight: 800; color: #2563eb; }
-    .analysis-sector-hl { font-weight: 700; color: #059669; }
-    .analysis-date-hl { color: #64748b; font-size: 0.85rem; font-weight: 600; }
+    .analysis-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+    .ac-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .ac-title { font-size: 1.15rem; font-weight: 800; color: #0f172a; }
+    .ac-vol { font-size: 0.9rem; font-weight: 700; color: #ef4444; background: #fee2e2; padding: 2px 8px; border-radius: 6px; }
+    .ac-sectors { margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
+    .ac-sector-badge { background: #1e293b; color: #ffffff; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
+    .ac-news { font-size: 1rem; color: #334155; line-height: 1.5; background: #f8fafc; padding: 10px; border-radius: 6px; }
+    .ac-date { font-size: 0.8rem; color: #94a3b8; text-align: right; margin-top: 8px; font-weight: 600; }
 
     /* 사이드바 테마 아이템 스타일 */
-    .sidebar-theme-row {
-        display: flex;
-        justify-content: space-between;
-        font-size: 0.85rem;
-        padding: 8px 10px;
-        margin-bottom: 5px;
-        border-radius: 6px;
-        font-weight: 700;
-    }
+    .sidebar-theme-row { display: flex; justify-content: space-between; font-size: 0.85rem; padding: 8px 10px; margin-bottom: 5px; border-radius: 6px; font-weight: 700; }
     
     div[data-testid="column"]:nth-of-type(2) [data-testid="stVerticalBlock"] { gap: 0px !important; }
     div[data-testid="stExpander"] { border: 1px solid rgba(0,0,0,0.1) !important; margin-bottom: -1px !important; border-radius: 0px !important; }
@@ -195,7 +116,7 @@ if 'global_indices' not in st.session_state: st.session_state.global_indices = [
 if 'global_themes' not in st.session_state: st.session_state.global_themes = []
 if 'global_briefing' not in st.session_state: st.session_state.global_briefing = "글로벌 스캔을 실행해주세요."
 if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.DataFrame()
-if 'analysis_results' not in st.session_state: st.session_state.analysis_results = []
+if 'analysis_results' not in st.session_state: st.session_state.analysis_results = [] # JSON 파싱된 리스트 저장용
 
 # ==========================================
 # 🌟 전역 설정 (섹터 색상 동기화)
@@ -214,10 +135,9 @@ def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_sox_stable():
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    url = "https://finance.naver.com/world/"
+    headers = {'User-Agent': 'Mozilla/5.0'}
     try:
-        res = requests.get(url, headers=headers, timeout=10)
+        res = requests.get("https://finance.naver.com/world/", headers=headers, timeout=10)
         res.encoding = 'euc-kr'
         soup = BeautifulSoup(res.text, 'html.parser')
         table = soup.find('table', {'class': 'tbl_exchange'})
@@ -229,15 +149,14 @@ def fetch_sox_stable():
     except: return None, None
 
 def fetch_robust_finance(ticker):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    headers = {'User-Agent': 'Mozilla/5.0'}
     try:
         url = f"https://finance.yahoo.com/quote/{ticker}"
         res = requests.get(url, headers=headers, timeout=12)
         soup = BeautifulSoup(res.text, 'html.parser')
         val_tag = soup.find("fin-streamer", {"data-field": "regularMarketPrice"})
         rate_tag = soup.find("fin-streamer", {"data-field": "regularMarketChangePercent"})
-        if val_tag and val_tag.text != "0.00" and val_tag.text != "":
-            return val_tag.text, rate_tag.text.strip()
+        if val_tag and val_tag.text != "0.00": return val_tag.text, rate_tag.text.strip()
     except: pass
     try:
         google_ticker = ticker.replace('^', '.')
@@ -275,7 +194,6 @@ def get_global_market_status():
         st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 지수 및 전력/원전 테마 복구가 완료되었습니다."
     except: st.session_state.global_briefing = "해외 서버 동기화 일시 지연 중"
 
-# --- [3] 준비 엔진: 테마 DB 전체 크롤링 및 로컬 저장 ---
 def update_theme_db():
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -306,103 +224,99 @@ def update_theme_db():
         status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
 
-# --- [4] 💡 종목 정밀 분석 엔진 (설계 1, 2 결합: 궁극의 듀얼 크롤링) ---
+# --- [4] 💡 종목 정밀 분석 엔진 (스마트 크롤링 & JSON 출력) ---
 
 def fetch_stock_news_headlines(stock_name):
-    # 기본 브라우저 위장 (설계 3: Referer 추가)
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Referer': 'https://finance.naver.com/'
     }
-    
     titles = []
     
-    # [설계 2] 1차 사냥터: '네이버 금융 뉴스' (태그 변형 적음, 정확도 높음)
     try:
-        # 네이버 금융은 EUC-KR 인코딩을 사용하므로 한글을 직접 인코딩해서 던집니다.
         encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
         fin_url = f"https://finance.naver.com/news/news_search.naver?q={encoded_kw}"
         res_fin = requests.get(fin_url, headers=headers, timeout=10)
-        res_fin.encoding = 'euc-kr' # 강제 디코딩
+        res_fin.encoding = 'euc-kr' 
         
         if res_fin.status_code == 200:
             soup_fin = BeautifulSoup(res_fin.text, 'html.parser')
-            # [설계 1] 금융 페이지 내 다중 셀렉터
             tags = soup_fin.select(".articleSubject a") or soup_fin.select(".tit") or soup_fin.select("dt a")
             for tag in tags[:10]:
                 text = tag.text.strip()
                 if text: titles.append(text)
-    except:
-        pass # 금융 탭 실패 시 아래 통합 검색으로 조용히 넘어갑니다.
+    except: pass
 
-    # [설계 2 보완] 2차 사냥터: '네이버 통합 뉴스' (금융에서 못 찾았을 경우 대비용)
     if not titles:
         try:
             gen_url = "https://search.naver.com/search.naver"
-            params = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'} # 관련도순
-            headers['Referer'] = 'https://search.naver.com/' # 통합검색용 위장
-            
+            params = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'}
+            headers['Referer'] = 'https://search.naver.com/'
             res_gen = requests.get(gen_url, params=params, headers=headers, timeout=10)
             if res_gen.status_code == 200:
                 soup_gen = BeautifulSoup(res_gen.text, 'html.parser')
-                
-                # [설계 1] 궁극의 그물망: 네이버가 꼬아놓은 모든 클래스명을 순차적으로 찌름
-                selectors = [".news_tit", ".title_link", "a.news_tit", ".dsc_txt_tit", ".api_txt_lines", ".link_txt"]
+                selectors = [".news_tit", ".title_link", "a.news_tit", ".dsc_txt_tit", ".api_txt_lines"]
                 for sel in selectors:
                     tags = soup_gen.select(sel)
-                    if tags: # 해당 태그를 찾았다면!
+                    if tags:
                         for tag in tags[:10]:
                             text = tag.text.strip()
                             if text: titles.append(text)
-                        break # 한 종류의 태그로 리스트를 채웠으면 더 이상 다른 태그를 찾지 않음
-        except:
-            pass
+                        break 
+        except: pass
             
-    # 💡 최후의 보루: 양쪽 다 실패했다면 디버깅 에러 출력
     if not titles:
-        return [f"[에러] 네이버 검색 전면 차단됨 (1, 2차 사냥터 모두 실패)"]
+        return ["[에러] 네이버 검색 전면 차단됨"]
         
-    # 리스트 순서를 유지하면서 중복된 기사 제목 제거
     unique_titles = []
     for t in titles:
-        if t not in unique_titles:
-            unique_titles.append(t)
-            
+        if t not in unique_titles: unique_titles.append(t)
     return unique_titles[:10]
 
 def perform_batch_analysis(news_map):
     if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
-        return ["⚠️ Gemini API 키를 설정해 주세요."]
+        return None # 에러 처리용 리턴
     
     try:
         analysis_model = genai.GenerativeModel('gemini-2.5-flash')
         
+        # 💡 프롬프트 개편: JSON 배열 포맷으로 다중 섹터를 반환하도록 지시
         prompt = f"""
         당신은 한국 주식 퀀트 분석 전문가입니다. 
-        아래 데이터는 실시간 주도주들에 대해 네이버 뉴스 제목을 종목당 최대 10개씩 크롤링한 결과입니다.
+        아래 데이터는 실시간 주도주들에 대해 네이버 뉴스 제목을 종목당 10개씩 크롤링한 결과입니다.
         
         [데이터]
         {json.dumps(news_map, ensure_ascii=False)}
         
         [출력 양식 및 분석 규칙]
-        1. 각 종목당 제공된 여러 개의 뉴스 제목을 모두 읽고, 해당 종목이 상승한 '진짜 핵심 재료'를 파악하세요.
-        2. 만약 제공된 데이터에 "[에러]" 라는 단어가 포함되어 있다면, 분석하지 말고 그대로 "[에러] 크롤링 실패 (차단)" 라고 이유에 적어주세요.
-        3. 각 종목을 아래 형식으로 한 줄씩 출력하세요:
-        • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} (최근 특징주)
-        4. 섹터는 '반도체', '2차전지', '바이오', '로봇/AI', '전력/원전', '방산/우주항공', '금융/지주', '개별주' 중 하나를 선택하세요.
-        5. 여러 기사를 다 읽어도 해당 종목에 대한 뚜렷한 재료가 없다면 이유 부분에 "최근 주요 재료 발견 안 됨" 이라고 적어주세요.
+        1. 각 종목당 제공된 뉴스 제목들을 읽고, 상승한 '진짜 핵심 재료'를 파악하세요.
+        2. 타 종목 찌라시는 무시하고, 데이터에 "[에러]"가 있으면 이유를 "크롤링 실패"로 적으세요.
+        3. '섹터'는 해당 재료를 기반으로 판단하되, 꼭 1개가 아니어도 됩니다. 연관된 모든 섹터를 배열 형태로 추출하세요. (예: ["반도체", "로봇/AI"]). 애매하면 ["개별주"]로 하세요.
+        4. 반드시 아래와 같은 순수 JSON 배열(Array) 형식으로만 응답하세요. 백틱(`)이나 부가 설명은 절대 넣지 마세요.
+        
+        [예시]
+        [
+          {{"종목명": "삼성전자", "섹터": ["반도체", "AI"], "이유": "엔비디아 HBM 퀄테스트 통과 기대감", "기사날짜": "오늘 특징주"}},
+          {{"종목명": "카카오", "섹터": ["금융/지주", "개별주"], "이유": "최근 주요 재료 발견 안 됨", "기사날짜": "-"}}
+        ]
         """
         response = analysis_model.generate_content(prompt)
-        return response.text.strip().split("\n")
+        
+        # JSON 텍스트 파싱
+        raw_text = response.text.strip()
+        raw_text = re.sub(r"^```json\n?|^```\n?", "", raw_text) # 마크다운 찌꺼기 제거
+        raw_text = re.sub(r"\n?```$", "", raw_text)
+        
+        return json.loads(raw_text) # 파이썬 리스트/딕셔너리로 변환하여 반환
     except Exception as e:
-        return [f"Gemini 분석 오류: {str(e)}"]
+        st.error(f"JSON 파싱 또는 API 오류: {e}")
+        return None
 
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
-    url = f"https://finance.naver.com/sise/sise_quant.naver?sosok={sosok}"
+    url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
     try:
         res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5); res.encoding = 'euc-kr'
         soup = BeautifulSoup(res.text, 'html.parser')
@@ -467,7 +381,8 @@ with tab_scanner:
                 df_k = fetch_market_data(0, '코스피'); df_q = fetch_market_data(1, '코스닥')
                 df = pd.concat([df_k, df_q], ignore_index=True)
                 if not df.empty:
-                    df = df[~df['종목명'].str.contains('KODEX|TIGER|ACE|SOL|스팩|ETN', na=False)]
+                    # 💡 ETF 및 스팩 등 노이즈 종목 필터링 강화
+                    df = df[~df['종목명'].str.contains('KODEX|TIGER|ACE|SOL|KBSTAR|HANARO|KOSEF|ARIRANG|스팩|ETN|선물|인버스|레버리지|VIX', na=False)]
                     df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace('%|\+', '', regex=True), errors='coerce')
                     df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
                     df = df.sort_values(by='거래대금_num', ascending=False).head(40)
@@ -506,22 +421,67 @@ with tab_analysis:
                 for i, name in enumerate(stocks):
                     news_payload[name] = fetch_stock_news_headlines(name)
                     progress_bar.progress((i + 1) / len(stocks))
-                    time.sleep(2.0) # 💡 IP 차단 방지 대기 시간 (절대 삭제 금지)
+                    time.sleep(2.0) 
                 
-                with st.expander("🚨 [디버깅] 크롤러가 수집한 듀얼 검색 결과 확인", expanded=True):
-                    st.write("금융 뉴스 탭과 통합 뉴스 탭을 모두 뒤져 가져온 10개 기사 원본입니다.")
+                with st.expander("🚨 [디버깅] 크롤러가 수집한 듀얼 검색 결과 확인", expanded=False):
                     st.json(news_payload)
                 
+                # JSON 데이터 저장
                 st.session_state.analysis_results = perform_batch_analysis(news_payload)
                 st.success("✅ 정밀 분석 완료!")
 
+        # 💡 UI 개편: 파싱된 JSON 데이터를 거래대금 순으로 정렬하고 섹터별로 묶어서 카드 형태로 출력
         if st.session_state.analysis_results:
+            grouped_data = {}
+            
+            # 1. 데이터 매핑 및 그룹화
+            for item in st.session_state.analysis_results:
+                stock_name = item.get("종목명", "")
+                
+                # 기존 DataFrame에서 거래대금 가져오기
+                vol_str = "N/A"
+                if not st.session_state.domestic_df.empty:
+                    match_row = st.session_state.domestic_df[st.session_state.domestic_df['종목명'] == stock_name]
+                    if not match_row.empty:
+                        vol_str = format_volume_to_jo_eok(match_row.iloc[0]['거래대금_num'])
+                
+                item['거래대금'] = vol_str
+                
+                # 메인 섹터 기준으로 그룹핑 (멀티 섹터 중 첫 번째 요소를 메인으로 취급)
+                sectors = item.get("섹터", ["개별주"])
+                main_sector = sectors[0] if isinstance(sectors, list) and len(sectors) > 0 else "개별주"
+                
+                if main_sector not in grouped_data:
+                    grouped_data[main_sector] = []
+                grouped_data[main_sector].append(item)
+            
+            # 2. 예쁜 카드 형태로 렌더링
             st.markdown('<div class="analysis-list-container">', unsafe_allow_html=True)
-            for row in st.session_state.analysis_results:
-                if row.strip():
-                    styled_row = row.replace("[", '<span class="analysis-stock-hl">[').replace("]", "]</span>")
-                    styled_row = styled_row.replace("섹터:", '<span class="analysis-sector-hl">섹터:').replace(" - 이유:", "</span> - 이유:")
-                    styled_row = re.sub(r'(\(.*?특징주\))', r'<span class="analysis-date-hl">\1</span>', styled_row)
+            for sector, items in grouped_data.items():
+                # 섹터별 타이틀
+                st.markdown(f'<div class="sector-group-title">🎯 {sector} 그룹</div>', unsafe_allow_html=True)
+                
+                # 개별 종목 카드
+                for item in items:
+                    # 멀티 섹터 뱃지 생성
+                    sectors_list = item.get("섹터", [])
+                    if isinstance(sectors_list, str): sectors_list = [sectors_list]
+                    badge_html = "".join([f'<span class="ac-sector-badge">{s}</span>' for s in sectors_list])
                     
-                    st.markdown(f'<div class="analysis-row">{styled_row}</div>', unsafe_allow_html=True)
+                    card_html = f"""
+                    <div class="analysis-card">
+                        <div class="ac-header">
+                            <span class="ac-title">{item.get('종목명', '')}</span>
+                            <span class="ac-vol">💰 거래대금: {item.get('거래대금', '')}</span>
+                        </div>
+                        <div class="ac-sectors">
+                            {badge_html}
+                        </div>
+                        <div class="ac-news">
+                            📰 <b>상승 이유:</b> {item.get('이유', '')}
+                        </div>
+                        <div class="ac-date">🕒 {item.get('기사날짜', '')}</div>
+                    </div>
+                    """
+                    st.markdown(card_html, unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
