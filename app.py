@@ -14,10 +14,16 @@ st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보�
 
 THEME_DB_FILE = "theme_db.csv"
 
-# 🌟 Gemini API 설정 (사용자 키 입력 필요)
-GEMINI_API_KEY = "YOUR_GEMINI_API_KEY" 
-if GEMINI_API_KEY != "YOUR_GEMINI_API_KEY":
+# ==========================================
+# 🛡️ [Security] Gemini API 키 불러오기 및 설정
+# ==========================================
+# 1. Streamlit Cloud(Secrets) 또는 로컬(.streamlit/secrets.toml)에서 키 추출
+if "GEMINI_API_KEY" in st.secrets:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
+else:
+    # 키가 없을 경우를 대비한 대체 처리 (UI에서 경고 노출용)
+    GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
 
 # ==========================================
 # 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS (기존 디자인 무삭제 유지)
@@ -305,7 +311,7 @@ def update_theme_db():
         status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
 
-# --- [4] 종목 정밀 분석 엔진: 뉴스 크롤링 & Gemini 배치 분석 (설계 추가) ---
+# --- [4] 종목 정밀 분석 엔진: 뉴스 크롤링 & Gemini 배치 분석 ---
 
 def fetch_stock_news_headline(stock_name):
     """'특징주 [종목명]' 키워드로 최신순 검색하여 핵심 제목 추출"""
@@ -324,24 +330,25 @@ def fetch_stock_news_headline(stock_name):
 
 def perform_batch_analysis(news_map):
     """Gemini 1.5 Flash를 이용한 배치 분석 및 설계 포맷팅"""
-    if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
-        return ["⚠️ Gemini API 키를 코드 상단에 입력해 주세요."]
+    # Secrets에서 불러온 키가 정상적인지 최종 확인
+    if GEMINI_API_KEY == "YOUR_GEMINI_API_KEY" or not GEMINI_API_KEY:
+        return ["⚠️ Gemini API 키가 설정되지 않았습니다. Streamlit Cloud의 Secrets 설정을 확인해 주세요."]
     
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    # 10개 단위로 끊어서 요청 (정확도 확보)
-    prompt = f"""
-    당신은 한국 주식 전문가입니다. 아래 종목들의 최근 뉴스 제목을 분석하여 재료의 본질을 파악하세요.
-    
-    [데이터]
-    {json.dumps(news_map, ensure_ascii=False)}
-    
-    [출력 양식 규칙]
-    각 종목을 아래 형식으로 한 줄씩 출력하세요:
-    • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} ({{뉴스날짜}} 특징주)
-    
-    섹터는 '반도체', '2차전지', '바이오', '로봇/AI', '전력/원전', '방산/우주항공', '금융/지주', '개별주' 중 하나를 선택하세요.
-    """
     try:
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        # 10개 단위로 끊어서 요청 (정확도 확보)
+        prompt = f"""
+        당신은 한국 주식 전문가입니다. 아래 종목들의 최근 뉴스 제목을 분석하여 재료의 본질을 파악하세요.
+        
+        [데이터]
+        {json.dumps(news_map, ensure_ascii=False)}
+        
+        [출력 양식 규칙]
+        각 종목을 아래 형식으로 한 줄씩 출력하세요:
+        • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} ({{뉴스날짜}} 특징주)
+        
+        섹터는 '반도체', '2차전지', '바이오', '로봇/AI', '전력/원전', '방산/우주항공', '금융/지주', '개별주' 중 하나를 선택하세요.
+        """
         response = model.generate_content(prompt)
         return response.text.strip().split("\n")
     except Exception as e:
@@ -373,11 +380,14 @@ def apply_mega_sector(row):
 
 def format_volume_to_jo_eok(x_million):
     try:
-        eok = int(x_million / 100)
+        # 쉼표 제거 후 숫자로 변환
+        clean_val = str(x_million).replace(',', '')
+        val_num = float(clean_val)
+        eok = int(val_num / 100)
         return f"{eok // 10000}조 {eok % 10000}억" if eok >= 10000 else f"{eok}억"
     except: return str(x_million)
 
-# --- [6] UI 레이아웃 구성 (무삭제 마스터) ---
+# --- [6] UI 레이아웃 구성 ---
 
 # 사이드바
 with st.sidebar:
@@ -415,17 +425,21 @@ with tab_scanner:
                 df_k = fetch_market_data(0, '코스피'); df_q = fetch_market_data(1, '코스닥')
                 df = pd.concat([df_k, df_q], ignore_index=True)
                 if not df.empty:
+                    # 불필요 종목 필터링 (ETF, 스팩 등)
                     df = df[~df['종목명'].str.contains('KODEX|TIGER|ACE|SOL|스팩|ETN', na=False)]
                     df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace('%|\+', '', regex=True), errors='coerce')
                     df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
+                    # 거래대금 상위 40개
                     df = df.sort_values(by='거래대금_num', ascending=False).head(40)
                     df = df[df['등락률_num'] >= 4.0]
+                    # 테마 DB 매핑
                     if os.path.exists(THEME_DB_FILE):
                         t_df = pd.read_csv(THEME_DB_FILE)
                         df['테마'] = df['종목명'].map(dict(zip(t_df['종목명'], t_df['테마']))).fillna('-')
                     else: df['테마'] = '-'
                     df['섹터'] = df.apply(apply_mega_sector, axis=1)
                     st.session_state.domestic_df = df
+        
         if not st.session_state.domestic_df.empty:
             for _, row in st.session_state.domestic_df.iterrows():
                 bg = SECTOR_COLORS.get(row['섹터'], '#ffffff')
