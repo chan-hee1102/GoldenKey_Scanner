@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta, timezone
 import os
-import FinanceDataReader as fdr
+import FinanceDataReader as fdr  # 🌟 글로벌 지수용 라이브러리 추가
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -124,7 +124,7 @@ st.markdown(
 )
 
 # ==========================================
-# 🌟 세션 상태(Session State) 초기화
+# 🌟 세션 상태(Session State) 초기화 (데이터 유지용)
 # ==========================================
 if 'global_indices' not in st.session_state: st.session_state.global_indices = []
 if 'global_themes' not in st.session_state: st.session_state.global_themes = []
@@ -140,6 +140,8 @@ SECTOR_COLORS = {
     '금융/지주': '#f3f4f6', '개별주': '#ffffff'
 }
 
+CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
+
 # --- [2] 데이터 로직 ---
 
 def get_kst_time():
@@ -148,19 +150,20 @@ def get_kst_time():
 def get_global_market_status():
     """🌟 FinanceDataReader 기반 안정적 글로벌 지수 로드 🌟"""
     indices = []
+    # FDR 티커 매핑
     tickers = {
         "나스닥": "IXIC",
-        "S&P 500": "US500", # FDR 기준 S&P500 티커
+        "S&P 500": "US500",
         "필라델피아 반도체": "SOX"
     }
     
     try:
         for name, ticker in tickers.items():
-            # 최근 2일 데이터를 가져와 전일 대비 등락 계산
-            df = fdr.DataReader(ticker)
-            if not df.empty:
-                curr_val = df['Close'].iloc[-1]
-                prev_val = df['Close'].iloc[-2]
+            # 최근 데이터를 가져와 전일 대비 등락 계산
+            df_global = fdr.DataReader(ticker)
+            if not df_global.empty:
+                curr_val = df_global['Close'].iloc[-1]
+                prev_val = df_global['Close'].iloc[-2]
                 change_rate = ((curr_val - prev_val) / prev_val) * 100
                 
                 sign = "+" if change_rate > 0 else ""
@@ -169,8 +172,10 @@ def get_global_market_status():
                     "value": f"{curr_val:,.2f}", 
                     "delta": f"{sign}{change_rate:.2f}%"
                 })
+            else:
+                indices.append({"name": name, "value": "데이터 지연", "delta": "0.00%"})
         
-        # 지수 데이터를 바탕으로 테마 상승률 연동
+        # 지수 데이터를 바탕으로 미국 테마 흐름 연동
         themes = [
             {"name": "반도체", "delta": indices[2]['delta'], "color": SECTOR_COLORS['반도체']},
             {"name": "로봇/AI", "delta": indices[0]['delta'], "color": SECTOR_COLORS['로봇/AI']},
@@ -180,10 +185,10 @@ def get_global_market_status():
         
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
-        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\nFinanceDataReader를 통해 지수 시세가 안정적으로 반영되었습니다."
+        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n지수 시세가 안정적으로 반영되었습니다. (5분 내외 지연)"
         
     except Exception as e:
-        st.error(f"글로벌 데이터 로드 실패: {e}")
+        st.session_state.global_briefing = f"로드 실패: {str(e)}"
 
 def update_theme_db():
     session = requests.Session(); session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -233,7 +238,7 @@ def apply_mega_sector(row):
         '바이오': ['바이오', '제약', '신약', '임상'],
         '로봇/AI': ['로봇', 'AI', '인공지능'],
         '전력/원전': ['전력', '전선', '원자력', '변압기'],
-        '방산/우주': ['방산', '우주', '항공'],
+        '방산/우주': ['방산', '우주', '항공', '조선'],
         '금융/지주': ['지주사', '은행', '보험', '밸류업']
     }
     for sector, keys in keywords.items():
@@ -246,7 +251,7 @@ def format_volume_to_jo_eok(x_million):
         return f"{eok // 10000}조 {eok % 10000}억" if eok >= 10000 else f"{eok}억"
     except: return str(x_million)
 
-# --- [3] UI 레이아웃 ---
+# --- [3] UI 레이아웃 구성 ---
 
 # 1. 사이드바
 with st.sidebar:
@@ -283,24 +288,22 @@ with tab_scanner:
         if st.button("🚀 국내 실시간 스캔 실행", use_container_width=True):
             with st.spinner("국내 분석 중..."):
                 df_k = fetch_market_data(0, '코스피'); df_q = fetch_market_data(1, '코스닥')
-                df = pd.concat([df_k, df_q], ignore_index=True)
-                if not df.empty:
-                    df = df[~df['종목명'].str.contains('KODEX|TIGER|KBSTAR|스팩', na=False)]
-                    df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace('%|\+', '', regex=True), errors='coerce')
-                    df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
-                    df = df.sort_values(by='거래대금_num', ascending=False).head(100)
-                    df = df[df['등락률_num'] >= 4.0]
-                    if os.path.exists(THEME_DB_FILE):
-                        theme_df = pd.read_csv(THEME_DB_FILE)
-                        df['테마'] = df['종목명'].map(dict(zip(theme_df['종목명'], theme_df['테마']))).fillna('-')
-                    else: df['테마'] = '-'
-                    df['섹터'] = df.apply(apply_mega_sector, axis=1)
-                    st.session_state.domestic_df = df
+                df_scan = pd.concat([df_k, df_q], ignore_index=True)
+                if not df_scan.empty:
+                    df_scan = df_scan[~df_scan['종목명'].str.contains('KODEX|TIGER|KBSTAR|스팩', na=False)]
+                    df_scan['등락률_num'] = pd.to_numeric(df_scan['등락률'].str.replace('%|\+', '', regex=True), errors='coerce')
+                    df_scan['거래대금_num'] = pd.to_numeric(df_scan['거래대금'].str.replace(',', ''), errors='coerce')
+                    df_scan = df_scan.sort_values(by='거래대금_num', ascending=False).head(100)
+                    df_scan = df_scan[df_scan['등락률_num'] >= 4.0]
+                    theme_df = pd.read_csv(THEME_DB_FILE) if os.path.exists(THEME_DB_FILE) else pd.DataFrame(columns=['종목명', '테마'])
+                    df_scan['테마'] = df_scan['종목명'].map(dict(zip(theme_df['종목명'], theme_df['테마']))).fillna('-')
+                    df_scan['섹터'] = df_scan.apply(apply_mega_sector, axis=1)
+                    st.session_state.domestic_df = df_scan
 
         if not st.session_state.domestic_df.empty:
-            df = st.session_state.domestic_df
-            st.subheader(f"🔥 실시간 주도주 ({len(df)}개)")
-            for _, row in df.iterrows():
+            df_disp = st.session_state.domestic_df
+            st.subheader(f"🔥 실시간 주도주 ({len(df_disp)}개)")
+            for _, row in df_disp.iterrows():
                 bg = SECTOR_COLORS.get(row['섹터'], '#ffffff')
                 rv = row['등락률_num']
                 rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1f2937")
@@ -321,13 +324,13 @@ with tab_scanner:
     with col_summary:
         st.subheader("🏆 주도 섹터")
         if not st.session_state.domestic_df.empty:
-            df = st.session_state.domestic_df
-            sector_group = df[df['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
+            df_sec = st.session_state.domestic_df
+            sector_group = df_sec[df_sec['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
             for idx_s, (s_name, count) in enumerate(sector_group.items()):
                 target_c = SECTOR_COLORS.get(s_name, '#ffffff')
                 st.markdown(f'<style>div[data-testid="column"]:nth-of-type(2) div[data-testid="stExpander"]:nth-of-type({idx_s+1}) summary {{ background-color: {target_c} !important; color: #1e293b !important; }}</style>', unsafe_allow_html=True)
                 with st.expander(f"{s_name} ({count})", expanded=True):
-                    s_stocks = df[df['섹터'] == s_name].sort_values('등락률_num', ascending=False)
+                    s_stocks = df_sec[df_sec['섹터'] == s_name].sort_values('등락률_num', ascending=False)
                     for i, (idx, s_row) in enumerate(s_stocks.iterrows()):
                         ldr = '<span class="leader-label">대장</span>' if i == 0 else ''
                         s_rv = s_row['등락률_num']
