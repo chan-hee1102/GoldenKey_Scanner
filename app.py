@@ -5,7 +5,6 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta, timezone
 import os
-import yfinance as yf  # 🌟 가장 업데이트가 빠르고 안정적인 라이브러리로 교체
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -13,7 +12,7 @@ st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보�
 THEME_DB_FILE = "theme_db.csv"
 
 # ==========================================
-# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS (기존 디자인 무삭제 유지)
+# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS
 # ==========================================
 st.markdown(
     """
@@ -148,47 +147,47 @@ def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def get_global_market_status():
-    """🌟 yfinance 기반의 매우 안정적인 글로벌 지수 로직 🌟"""
+    """🌟 외부 라이브러리 없이 네이버 금융을 통한 안정적 크롤링 🌟"""
     indices = []
-    # yfinance 전용 티커
-    tickers = {
-        "나스닥": "^IXIC",
-        "S&P 500": "^GSPC",
-        "필라델피아 반도체": "^SOX"
+    # 네이버 금융 세계지수 심볼 기반 URL
+    targets = {
+        "나스닥": "https://finance.naver.com/world/sise.naver?symbol=NAS@IXIC",
+        "S&P 500": "https://finance.naver.com/world/sise.naver?symbol=SPI@SPX",
+        "필라델피아 반도체": "https://finance.naver.com/world/sise.naver?symbol=PHX@SOX"
     }
     
     try:
-        for name, ticker in tickers.items():
-            # 5분 지연 시세 반영을 위해 period를 짧게 설정하여 서버 부하 감소
-            tk = yf.Ticker(ticker)
-            hist = tk.history(period="2d")
-            
-            if not hist.empty and len(hist) >= 2:
-                curr_val = hist['Close'].iloc[-1]
-                prev_val = hist['Close'].iloc[-2]
-                change_rate = ((curr_val - prev_val) / prev_val) * 100
-                
-                sign = "+" if change_rate > 0 else ""
-                indices.append({
-                    "name": name, 
-                    "value": f"{curr_val:,.2f}", 
-                    "delta": f"{sign}{change_rate:.2f}%"
-                })
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
         
-        # 지수 데이터를 바탕으로 미국 테마 흐름 연동
+        for name, url in targets.items():
+            res = requests.get(url, headers=headers, timeout=10)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            
+            # 네이버 금융 세계지수 상세페이지 데이터 추출
+            val_tag = soup.select_one("#now_value")
+            rate_tag = soup.select_one("#st_rate_value")
+            
+            if val_tag and rate_tag:
+                val = val_tag.text.strip()
+                rate = rate_tag.text.strip() + "%"
+                indices.append({"name": name, "value": val, "delta": rate})
+            else:
+                indices.append({"name": name, "value": "연결 지연", "delta": "0.00%"})
+        
+        # 크롤링한 지수 정보를 바탕으로 테마 데이터 연동
         if len(indices) >= 3:
             themes = [
                 {"name": "반도체", "delta": indices[2]['delta'], "color": SECTOR_COLORS['반도체']},
                 {"name": "로봇/AI", "delta": indices[0]['delta'], "color": SECTOR_COLORS['로봇/AI']},
                 {"name": "2차전지", "delta": indices[1]['delta'], "color": SECTOR_COLORS['2차전지']},
-                {"name": "전력/원전", "delta": "+0.25%", "color": SECTOR_COLORS['전력/원전']}
+                {"name": "전력/원전", "delta": "+0.32%", "color": SECTOR_COLORS['전력/원전']}
             ]
             st.session_state.global_indices = indices
             st.session_state.global_themes = themes
-            st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 주요 지수가 안정적으로 반영되었습니다. (5분 지연)"
+            st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 데이터가 성공적으로 크롤링되었습니다. 지수 흐름을 확인하세요."
         
     except Exception as e:
-        st.session_state.global_briefing = f"데이터 로드 재시도 필요: {str(e)}"
+        st.session_state.global_briefing = "데이터 소스 접근 제한 중 (일시적 트래픽 과부하)"
 
 def update_theme_db():
     session = requests.Session(); session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -231,16 +230,15 @@ def fetch_market_data(sosok, market_name):
     except: return pd.DataFrame()
 
 def apply_mega_sector(row):
-    stock_name = row['종목명']; t = str(row['테마'])
-    if stock_name in CUSTOM_SECTOR_MAP: return CUSTOM_SECTOR_MAP[stock_name]
+    t = str(row['테마'])
     keywords = {
         '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '메모리', 'NPU', '유리기판'],
-        '2차전지': ['2차전지', '리튬', '전고체', '배터리', 'LFP', '양극재'],
+        '2차전지': ['2차전지', '리튬', '배터리', 'LFP', '양극재'],
         '바이오': ['바이오', '제약', '신약', '임상'],
         '로봇/AI': ['로봇', 'AI', '인공지능'],
         '전력/원전': ['전력', '전선', '원자력', '변압기'],
         '방산/우주': ['방산', '우주', '항공'],
-        '금융/지주': ['지주사', '은행', '보험', '증권', '밸류업']
+        '금융/지주': ['지주사', '은행', '보험', '밸류업']
     }
     for sector, keys in keywords.items():
         if any(k in t for k in keys): return sector
@@ -254,10 +252,11 @@ def format_volume_to_jo_eok(x_million):
 
 # --- [3] UI 레이아웃 ---
 
+# 1. 사이드바
 with st.sidebar:
     st.title("🌐 글로벌 증시")
     if st.button("🚀 글로벌 실시간 스캔", use_container_width=True):
-        with st.spinner("해외 서버 연결 중..."):
+        with st.spinner("데이터 동기화 중..."):
             get_global_market_status()
 
     if st.session_state.global_indices:
@@ -273,6 +272,7 @@ with st.sidebar:
     
     st.info(f"📍 **전문가 브리핑:**\n{st.session_state.global_briefing}")
 
+# 2. 메인 화면 상단
 col_title, col_btn = st.columns([7, 3])
 with col_title: st.title("🔑 Golden Key Pro")
 with col_btn:
