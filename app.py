@@ -8,7 +8,6 @@ import os
 import re
 import json
 import google.generativeai as genai
-import random
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -21,13 +20,11 @@ THEME_DB_FILE = "theme_db.csv"
 if "GEMINI_API_KEY" in st.secrets:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
-    # 💡 404 오류 영구 해결: 구글 정책 변경에 따라 최신 모델인 gemini-2.5-flash 로 지정합니다.
     try:
         model = genai.GenerativeModel(model_name='gemini-2.5-flash')
     except:
         model = None
 else:
-    # 키가 없을 경우를 대비한 대체 처리 (UI에서 경고 노출용)
     GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
     model = None
 
@@ -216,7 +213,6 @@ def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_sox_stable():
-    """필라델피아 반도체 지수 전용: 네이버 금융 해외지수 페이지 크롤링"""
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     url = "https://finance.naver.com/world/"
     try:
@@ -232,7 +228,6 @@ def fetch_sox_stable():
     except: return None, None
 
 def fetch_robust_finance(ticker):
-    """지수 0% 오류 해결을 위해 야후/구글 교차 체크 및 JSON 추출 로직"""
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
         url = f"https://finance.yahoo.com/quote/{ticker}"
@@ -257,7 +252,6 @@ def fetch_robust_finance(ticker):
     return "N/A", "0.00%"
 
 def get_global_market_status():
-    """🌟 3대 지수 및 전력/원전 확장 ETF 통합 분석 🌟"""
     indices = []
     themes = []
     idx_map = {"나스닥 100": "^NDX", "S&P 500": "^GSPC", "다우존스": "^DJI"}
@@ -268,7 +262,6 @@ def get_global_market_status():
             indices.append({"name": name, "value": v, "delta": r})
             time.sleep(0.2)
         
-        # 필라 반도체는 네이버 경로 우선
         sox_v, sox_r = fetch_sox_stable()
         if not sox_v: sox_v, sox_r = fetch_robust_finance("^SOX")
         indices.append({"name": "필라 반도체", "value": sox_v, "delta": sox_r})
@@ -284,7 +277,6 @@ def get_global_market_status():
         st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 지수 및 전력/원전 테마 복구가 완료되었습니다."
     except: st.session_state.global_briefing = "해외 서버 동기화 일시 지연 중"
 
-# --- [3] 준비 엔진: 테마 DB 전체 크롤링 및 로컬 저장 ---
 def update_theme_db():
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -317,13 +309,9 @@ def update_theme_db():
         status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
 
-# --- [4] 💡 종목 정밀 분석 엔진 (안전 크롤링 + 관련도 10개 뉴스 다중 수집) ---
+# --- [4] 💡 종목 정밀 분석 엔진 (디버깅 로직 추가) ---
 
 def fetch_stock_news_headlines(stock_name):
-    """
-    네이버 차단 방지를 위해 파라미터를 정밀화하고,
-    Gemini가 엉뚱한 뉴스(카카오 등)를 걸러낼 수 있도록 '관련도순' 상위 최대 10개 기사 제목을 긁어옵니다.
-    """
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -334,36 +322,38 @@ def fetch_stock_news_headlines(stock_name):
     params = {
         'where': 'news',
         'query': f'특징주 {stock_name}',
-        'sort': '0' # 💡 0은 '관련도순' 입니다. (정확한 재료 파악을 위해 변경)
+        'sort': '0' 
     }
     
     try:
         res = requests.get(url, params=params, headers=headers, timeout=10)
-        soup = BeautifulSoup(res.text, 'html.parser')
         
+        # 💡 원인 분석 1: 상태 코드가 200(정상)이 아니면 네이버가 IP를 차단한 것입니다.
+        if res.status_code != 200:
+            return [f"[에러] 네이버 서버 차단됨 (응답 코드: {res.status_code})"]
+            
+        soup = BeautifulSoup(res.text, 'html.parser')
         title_tags = soup.select(".news_tit")
         titles = []
         
-        # 상위 10개의 기사 제목만 리스트로 담기
         for tag in title_tags[:10]:
             titles.append(tag.text.strip())
             
+        # 💡 원인 분석 2: 정상 접속은 됐는데, 원하는 태그명(.news_tit)이 없는 경우입니다.
         if not titles:
-            return ["최근 특징주 검색 결과 없음"]
+            return [f"[에러] 접속은 성공했으나 뉴스 제목을 못 찾음 (검색 결과가 없거나, HTML 태그 변경됨. HTML 길이: {len(res.text)})"]
             
         return titles
     except Exception as e:
-        return ["뉴스 서버 접근 실패 (차단 의심)"]
+        return [f"[에러] 통신 자체 실패: {str(e)}"]
 
 def perform_batch_analysis(news_map):
-    """Gemini 2.5 Flash를 이용한 배치 분석 및 설계 포맷팅"""
     if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
-        return ["⚠️ Gemini API 키를 코드 상단에 입력해 주세요."]
+        return ["⚠️ Gemini API 키를 설정해 주세요."]
     
     try:
         analysis_model = genai.GenerativeModel('gemini-2.5-flash')
         
-        # 프롬프트 업데이트: 10개 기사를 모두 보고 타겟 종목의 진짜 이유만 찾아내도록 지시
         prompt = f"""
         당신은 한국 주식 퀀트 분석 전문가입니다. 
         아래 데이터는 실시간 주도주들에 대해 네이버 뉴스(관련도순) 제목을 종목당 최대 10개씩 크롤링한 결과입니다.
@@ -373,7 +363,7 @@ def perform_batch_analysis(news_map):
         
         [출력 양식 및 분석 규칙]
         1. 각 종목당 제공된 여러 개의 뉴스 제목을 모두 읽고, 해당 종목이 상승한 '진짜 핵심 재료'를 파악하세요.
-        2. 검색어 혼선으로 섞여 들어온 엉뚱한 타 종목 기사(예: 삼성전자 기사에 섞인 카카오 기사 등)는 완벽히 무시하세요.
+        2. 만약 제공된 데이터에 "[에러]" 라는 단어가 포함되어 있다면, 분석하지 말고 그대로 "[에러] 크롤링 실패" 라고 이유에 적어주세요.
         3. 각 종목을 아래 형식으로 한 줄씩 출력하세요:
         • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} (최근 특징주)
         4. 섹터는 '반도체', '2차전지', '바이오', '로봇/AI', '전력/원전', '방산/우주항공', '금융/지주', '개별주' 중 하나를 선택하세요.
@@ -484,7 +474,6 @@ with tab_analysis:
         st.info("실시간 주도주 스캔을 먼저 실행하세요.")
     else:
         if st.button("🔎 뉴스 크롤링 및 Gemini 정밀 분석 시작", use_container_width=True):
-            # 💡 봇 차단 방지를 위해 소요 시간을 넉넉히 안내합니다.
             with st.spinner("안전한 뉴스 수집 및 정밀 분석을 위해 약 1~2분 정도 소요됩니다. 잠시만 대기해 주세요..."):
                 news_payload = {}
                 progress_bar = st.progress(0)
@@ -492,9 +481,12 @@ with tab_analysis:
                 for i, name in enumerate(stocks):
                     news_payload[name] = fetch_stock_news_headlines(name)
                     progress_bar.progress((i + 1) / len(stocks))
-                    
-                    # 💡 핵심 방어 로직: 40개 종목 연속 검색 시 네이버 IP 차단을 막기 위해 무조건 2초씩 대기합니다.
-                    time.sleep(2.0) 
+                    time.sleep(2.0)
+                
+                # 💡 핵심 디버깅 UI: 제미나이에게 데이터를 던지기 전에 화면에 먼저 출력해봅니다.
+                with st.expander("🚨 [디버깅] 크롤러가 수집한 원본 데이터 확인 (클릭해서 열어보세요)", expanded=True):
+                    st.write("아래 데이터가 전부 `[에러]`로 적혀 있다면 네이버가 접근을 완전히 막은 것입니다.")
+                    st.json(news_payload)
                 
                 st.session_state.analysis_results = perform_batch_analysis(news_payload)
                 st.success("✅ 정밀 분석 완료!")
