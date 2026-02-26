@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta, timezone
 import os
+import FinanceDataReader as fdr
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -123,7 +124,7 @@ st.markdown(
 )
 
 # ==========================================
-# 🌟 세션 상태(Session State) 초기화 (데이터 유지용)
+# 🌟 세션 상태(Session State) 초기화
 # ==========================================
 if 'global_indices' not in st.session_state: st.session_state.global_indices = []
 if 'global_themes' not in st.session_state: st.session_state.global_themes = []
@@ -139,51 +140,47 @@ SECTOR_COLORS = {
     '금융/지주': '#f3f4f6', '개별주': '#ffffff'
 }
 
-CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
-
 # --- [2] 데이터 로직 ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def get_global_market_status():
-    """🌟 구글 파이낸스 기반 강력한 글로벌 지수 크롤링 🌟"""
+    """🌟 FinanceDataReader 기반 안정적 글로벌 지수 로드 🌟"""
     indices = []
-    # 구글 파이낸스 티커 주소
-    urls = {
-        "나스닥": "https://www.google.com/finance/quote/.IXIC:INDEXNASDAQ",
-        "S&P 500": "https://www.google.com/finance/quote/.INX:INDEXSP",
-        "필라델피아 반도체": "https://www.google.com/finance/quote/SOX:INDEXNASDAQ"
+    tickers = {
+        "나스닥": "IXIC",
+        "S&P 500": "US500", # FDR 기준 S&P500 티커
+        "필라델피아 반도체": "SOX"
     }
     
     try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        for name, url in urls.items():
-            res = requests.get(url, headers=headers, timeout=10)
-            soup = BeautifulSoup(res.text, 'html.parser')
-            
-            # 구글 파이낸스 데이터 추출 셀렉터 (2024년 기준 최신 구조)
-            val_tag = soup.select_one(".YMlKec.fxKb9b") # 지수값
-            rate_tag = soup.select_one(".Jw796") # 등락률
-            
-            if val_tag and rate_tag:
-                # 등락률에서 괄호 등 불필요한 문자 제거
-                clean_rate = rate_tag.text.replace('(', '').replace(')', '').strip()
-                indices.append({"name": name, "value": val_tag.text, "delta": clean_rate})
-            else:
-                indices.append({"name": name, "value": "데이터 지연", "delta": "0.00%"})
+        for name, ticker in tickers.items():
+            # 최근 2일 데이터를 가져와 전일 대비 등락 계산
+            df = fdr.DataReader(ticker)
+            if not df.empty:
+                curr_val = df['Close'].iloc[-1]
+                prev_val = df['Close'].iloc[-2]
+                change_rate = ((curr_val - prev_val) / prev_val) * 100
+                
+                sign = "+" if change_rate > 0 else ""
+                indices.append({
+                    "name": name, 
+                    "value": f"{curr_val:,.2f}", 
+                    "delta": f"{sign}{change_rate:.2f}%"
+                })
         
         # 지수 데이터를 바탕으로 테마 상승률 연동
         themes = [
             {"name": "반도체", "delta": indices[2]['delta'], "color": SECTOR_COLORS['반도체']},
             {"name": "로봇/AI", "delta": indices[0]['delta'], "color": SECTOR_COLORS['로봇/AI']},
             {"name": "2차전지", "delta": indices[1]['delta'], "color": SECTOR_COLORS['2차전지']},
-            {"name": "전력/원전", "delta": "+0.45%", "color": SECTOR_COLORS['전력/원전']}
+            {"name": "전력/원전", "delta": "+0.15%", "color": SECTOR_COLORS['전력/원전']}
         ]
         
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
-        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n구글 파이낸스 실시간 지수가 반영되었습니다. 해외 증시 변동을 확인하세요."
+        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\nFinanceDataReader를 통해 지수 시세가 안정적으로 반영되었습니다."
         
     except Exception as e:
         st.error(f"글로벌 데이터 로드 실패: {e}")
@@ -231,9 +228,9 @@ def fetch_market_data(sosok, market_name):
 def apply_mega_sector(row):
     t = str(row['테마'])
     keywords = {
-        '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '메모리', '유리기판'],
-        '2차전지': ['2차전지', '리튬', '배터리', 'LFP', '양극재'],
-        '바이오': ['바이오', '제약', '신약', '의료기기', '임상'],
+        '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '유리기판'],
+        '2차전지': ['2차전지', '리튬', '배터리', '양극재'],
+        '바이오': ['바이오', '제약', '신약', '임상'],
         '로봇/AI': ['로봇', 'AI', '인공지능'],
         '전력/원전': ['전력', '전선', '원자력', '변압기'],
         '방산/우주': ['방산', '우주', '항공'],
