@@ -30,7 +30,7 @@ else:
     model = None
 
 # ==========================================
-# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS 
+# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS
 # ==========================================
 st.markdown(
     """
@@ -45,7 +45,7 @@ st.markdown(
         background: #f1f5f9;
     }
 
-    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) 🌟 */
+    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) */
     [data-testid="stMetricValue"] {
         font-size: 1.25rem !important;
         font-weight: 800 !important;
@@ -56,7 +56,7 @@ st.markdown(
         margin-bottom: -5px !important;
     }
 
-    /* 🌟 실시간 주도주 리스트 디자인 (무삭제 유지) 🌟 */
+    /* 🌟 실시간 주도주 리스트 디자인 */
     .stock-card {
         background: white;
         border-radius: 8px;
@@ -95,7 +95,7 @@ st.markdown(
         white-space: nowrap;
     }
 
-    /* 🌟 우측 섹터 리스트 칼정렬 (일직선 정렬 로직) 🌟 */
+    /* 🌟 우측 섹터 리스트 칼정렬 */
     .sector-item {
         font-size: 0.85rem;
         color: #334155;
@@ -148,7 +148,7 @@ st.markdown(
         flex-shrink: 0;
     }
 
-    /* 🌟 정밀 분석 탭 전용 프리미엄 카드 스타일 🌟 */
+    /* 🌟 정밀 분석 탭 전용 프리미엄 카드 스타일 */
     .sector-group-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; margin-top: 25px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 2px solid #cbd5e1; }
     .analysis-card {
         background: #ffffff; border-radius: 10px; padding: 16px; margin-bottom: 12px;
@@ -203,7 +203,7 @@ SECTOR_COLORS = {
 
 CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
 
-# --- [2] 미 증시 엔진: 네이버 금융 통합 및 듀얼 크롤링 로직 (안정성 확보) ---
+# --- [2] 미 증시 엔진: 네이버 금융 통합 및 듀얼 크롤링 로직 ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
@@ -369,7 +369,6 @@ def perform_batch_analysis(news_map):
     try:
         analysis_model = genai.GenerativeModel('gemini-2.5-flash')
         
-        # 💡 프롬프트 업데이트: 다중 섹터를 JSON 포맷으로 강제 반환하도록 지시
         prompt = f"""
         당신은 한국 주식 퀀트 분석 전문가입니다. 
         아래 데이터는 실시간 주도주들에 대해 네이버 뉴스 제목을 종목당 최대 10개씩 크롤링한 결과입니다.
@@ -391,31 +390,44 @@ def perform_batch_analysis(news_map):
         """
         response = analysis_model.generate_content(prompt)
         
-        # JSON 텍스트 파싱
         raw_text = response.text.strip()
-        raw_text = re.sub(r"^```json\n?|^```\n?", "", raw_text) # 마크다운 찌꺼기 제거
+        raw_text = re.sub(r"^```json\n?|^```\n?", "", raw_text) 
         raw_text = re.sub(r"\n?```$", "", raw_text)
         
         return json.loads(raw_text)
     except Exception as e:
-        # 💡 AttributeError 해결: 에러 발생 시 문자열 대신 딕셔너리 리스트 반환
         return [{"종목명": "분석 시스템 에러", "섹터": ["에러"], "이유": f"Gemini 분석 오류: {str(e)}", "기사날짜": "-"}]
 
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
     url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
+    
+    # 💡 1차 문제 해결: 국내 스캐너에도 강력한 브라우저 위장 추가
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Referer': '[https://finance.naver.com/](https://finance.naver.com/)'
+    }
     try:
-        res = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5); res.encoding = 'euc-kr'
+        res = requests.get(url, headers=headers, timeout=5)
+        res.encoding = 'euc-kr'
         soup = BeautifulSoup(res.text, 'html.parser')
         table = soup.find('table', {'class': 'type_2'})
+        
+        if not table:
+            # 네이버 접근 차단 시 터미널 로그 및 빈 데이터 반환
+            st.error(f"[에러] 네이버 금융 접근 차단됨 ({market_name})")
+            return pd.DataFrame()
+            
         data = []
         for tr in table.find_all('tr'):
             tds = tr.find_all('td')
             if len(tds) > 5:
                 data.append({'시장': market_name, '종목명': tds[1].text.strip(), '등락률': tds[4].text.strip(), '거래대금': tds[6].text.strip()})
         return pd.DataFrame(data)
-    except: return pd.DataFrame()
+    except Exception as e: 
+        st.error(f"[에러] {market_name} 데이터 수집 중 통신 오류: {e}")
+        return pd.DataFrame()
 
 def apply_mega_sector(row):
     stock_name = row['종목명']; t = str(row['테마'])
@@ -466,23 +478,30 @@ with tab_scanner:
     with col_main:
         if st.button("🚀 국내 실시간 스캔 실행", use_container_width=True):
             with st.spinner("국내 시장 수급 분석 중..."):
-                df_k = fetch_market_data(0, '코스피'); df_q = fetch_market_data(1, '코스닥')
+                df_k = fetch_market_data(0, '코스피')
+                df_q = fetch_market_data(1, '코스닥')
                 df = pd.concat([df_k, df_q], ignore_index=True)
-                if not df.empty:
-                    # 💡 ETF 방어막 대폭 강화: 시장의 모든 파생상품, ETN, 인버스 키워드 차단
+                
+                # 💡 2차 문제 해결: 데이터를 못 가져왔거나 필터링 후 텅 빈 경우 경고창 노출
+                if df.empty:
+                    st.warning("⚠️ 네이버 금융에서 데이터를 가져오지 못했습니다. (접속 차단 또는 서버 응답 없음)")
+                else:
                     df = df[~df['종목명'].str.contains('KODEX|TIGER|ACE|SOL|KBSTAR|HANARO|KOSEF|ARIRANG|스팩|ETN|선물|인버스|레버리지|VIX|옵션|마이티|히어로즈|TIMEFOLIO', na=False)]
                     
-                    # 💡 문법 오류 수정: 정규식 이스케이프 경고(SyntaxWarning) 해결을 위해 r'' 적용
                     df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace(r'%|\+', '', regex=True), errors='coerce')
                     df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
                     df = df.sort_values(by='거래대금_num', ascending=False).head(40)
                     df = df[df['등락률_num'] >= 4.0]
-                    if os.path.exists(THEME_DB_FILE):
-                        t_df = pd.read_csv(THEME_DB_FILE)
-                        df['테마'] = df['종목명'].map(dict(zip(t_df['종목명'], t_df['테마']))).fillna('-')
-                    else: df['테마'] = '-'
-                    df['섹터'] = df.apply(apply_mega_sector, axis=1)
-                    st.session_state.domestic_df = df
+                    
+                    if df.empty:
+                        st.info("ℹ️ 현재 4% 이상 상승한 주도주(거래대금 상위)가 없습니다. (장이 열리지 않은 이른 아침일 수 있습니다.)")
+                    else:
+                        if os.path.exists(THEME_DB_FILE):
+                            t_df = pd.read_csv(THEME_DB_FILE)
+                            df['테마'] = df['종목명'].map(dict(zip(t_df['종목명'], t_df['테마']))).fillna('-')
+                        else: df['테마'] = '-'
+                        df['섹터'] = df.apply(apply_mega_sector, axis=1)
+                        st.session_state.domestic_df = df
         
         if not st.session_state.domestic_df.empty:
             for _, row in st.session_state.domestic_df.iterrows():
@@ -511,7 +530,7 @@ with tab_analysis:
                 for i, name in enumerate(stocks):
                     news_payload[name] = fetch_stock_news_headlines(name)
                     progress_bar.progress((i + 1) / len(stocks))
-                    time.sleep(2.0)
+                    time.sleep(2.0) 
                 
                 with st.expander("🚨 [디버깅] 크롤러가 수집한 듀얼 검색 결과 확인", expanded=False):
                     st.json(news_payload)
@@ -519,19 +538,15 @@ with tab_analysis:
                 st.session_state.analysis_results = perform_batch_analysis(news_payload)
                 st.success("✅ 정밀 분석 완료!")
 
-        # 💡 UI 렌더링: 파싱된 JSON 데이터를 거래대금 매칭 후, 그룹화하여 카드 형태로 렌더링
         if st.session_state.analysis_results:
             grouped_data = {}
             
-            # 1. 거래대금 매핑 및 메인 섹터 기준 그룹화
             for item in st.session_state.analysis_results:
-                # 안전장치: item이 예기치 않게 문자열로 반환되었을 경우 스킵
                 if isinstance(item, str):
                     continue
                     
                 stock_name = item.get("종목명", "알 수 없음")
                 
-                # 기존 DataFrame에서 해당 종목의 거래대금 가져오기
                 vol_str = "N/A"
                 if not st.session_state.domestic_df.empty:
                     match_row = st.session_state.domestic_df[st.session_state.domestic_df['종목명'] == stock_name]
@@ -540,7 +555,6 @@ with tab_analysis:
                 
                 item['거래대금'] = vol_str
                 
-                # 메인 섹터를 그룹핑의 키값으로 사용 (여러 섹터 중 첫 번째 요소를 기준)
                 sectors = item.get("섹터", ["개별주"])
                 main_sector = sectors[0] if isinstance(sectors, list) and len(sectors) > 0 else "개별주"
                 
@@ -548,18 +562,14 @@ with tab_analysis:
                     grouped_data[main_sector] = []
                 grouped_data[main_sector].append(item)
             
-            # 2. 프리미엄 섹터별 카드 UI 렌더링
             st.markdown('<div class="analysis-list-container">', unsafe_allow_html=True)
             for sector, items in grouped_data.items():
-                # 섹터별 타이틀
                 st.markdown(f'<div class="sector-group-title">🎯 {sector} 관련주</div>', unsafe_allow_html=True)
                 
-                # 개별 종목 카드
                 for item in items:
                     sectors_list = item.get("섹터", [])
                     if isinstance(sectors_list, str): sectors_list = [sectors_list]
                     
-                    # 여러 개의 섹터를 뱃지로 변환
                     badge_html = "".join([f'<span class="ac-sector-badge">{s}</span>' for s in sectors_list])
                     
                     card_html = f"""
