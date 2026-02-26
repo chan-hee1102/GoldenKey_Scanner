@@ -29,15 +29,15 @@ st.markdown(
 
     /* 🌟 지수 폰트 크기 슬림화 (가독성 개선) 🌟 */
     [data-testid="stMetricValue"] {
-        font-size: 1.4rem !important;
+        font-size: 1.25rem !important;
         font-weight: 800 !important;
     }
     [data-testid="stMetricLabel"] {
-        font-size: 0.85rem !important;
+        font-size: 0.8rem !important;
         color: #64748b !important;
     }
 
-    /* 🌟 실시간 주도주 리스트 간격 최적화 🌟 */
+    /* 실시간 주도주 리스트 간격 최적화 */
     .stock-card {
         background: white;
         border-radius: 8px;
@@ -50,7 +50,6 @@ st.markdown(
         border-left: 5px solid #e2e8f0;
     }
 
-    /* 구역별 비율 조정 */
     .left-zone { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; }
     .center-zone { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; margin-left: 10px; }
     .right-zone { display: flex; align-items: center; gap: 15px; flex: 1; justify-content: flex-end; }
@@ -76,7 +75,7 @@ st.markdown(
         white-space: nowrap;
     }
 
-    /* 🌟 우측 섹터 리스트 칼정렬 (일직선 정렬) 🌟 */
+    /* 우측 섹터 리스트 칼정렬 */
     .sector-item {
         font-size: 0.85rem;
         color: #334155;
@@ -88,36 +87,11 @@ st.markdown(
         width: 100%;
     }
 
-    .sector-item-left {
-        display: flex;
-        align-items: center;
-        flex: 1;
-        overflow: hidden;
-    }
-    .sector-stock-name {
-        font-weight: 700;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-
-    .sector-item-right {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-    }
-    .val-rate {
-        width: 65px;
-        text-align: right;
-        font-weight: 800;
-        margin-right: 12px;
-    }
-    .val-vol {
-        width: 75px;
-        text-align: right;
-        color: #64748b;
-        font-size: 0.8rem;
-    }
+    .sector-item-left { display: flex; align-items: center; flex: 1; overflow: hidden; }
+    .sector-stock-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sector-item-right { display: flex; align-items: center; justify-content: flex-end; }
+    .val-rate { width: 65px; text-align: right; font-weight: 800; margin-right: 12px; }
+    .val-vol { width: 75px; text-align: right; color: #64748b; font-size: 0.8rem; }
 
     .leader-label {
         font-size: 0.65rem;
@@ -160,7 +134,7 @@ st.markdown(
 )
 
 # ==========================================
-# 🌟 전역 색상 설정 (글로벌-국내 동기화)
+# 🌟 전역 색상 설정
 # ==========================================
 SECTOR_COLORS = {
     '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', 
@@ -178,30 +152,37 @@ if 'global_themes' not in st.session_state: st.session_state.global_themes = []
 if 'global_briefing' not in st.session_state: st.session_state.global_briefing = "글로벌 실시간 스캔을 눌러주세요."
 if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.DataFrame()
 
-# --- [2] 미 증시 및 글로벌 테마 데이터 엔진 (방법 A 적용) ---
+# --- [2] 미 증시 엔진: 3대 지수 & 섹터별 ETF 분석 (방법 A) ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_google_finance_data(ticker, market_type="INDEXNASDAQ"):
-    """구글 파이낸스 실시간 데이터 추출 공통 함수"""
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    """구글 파이낸스 데이터 추출 강화 함수"""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
     try:
         url = f"https://www.google.com/finance/quote/{ticker}:{market_type}"
         res = requests.get(url, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, 'html.parser')
-        price = soup.select_one(".YMlKec.fxKb9b").text
-        rate = soup.select_one(".Jw796").text.replace('(', '').replace(')', '').strip()
-        return price, rate
+        
+        # 구글 파이낸스 데이터 추출 로직 보강
+        price_tag = soup.select_one(".YMlKec.fxKb9b")
+        rate_tag = soup.select_one(".Jw796")
+        
+        if price_tag and rate_tag:
+            price = price_tag.text
+            rate = rate_tag.text.replace('(', '').replace(')', '').strip()
+            return price, rate
+        return "데이터 지연", "0.00%"
     except:
-        return "N/A", "0.00%"
+        return "연결 대기", "0.00%"
 
 def get_global_market_status():
     """🌟 3대 지수 및 섹터별 대표 ETF 분석 로직 🌟"""
     indices = []
     themes = []
     
-    # 1. 미국 3대 지수 타겟
+    # 1. 미국 3대 지수 타겟 (나스닥, S&P500, 다우, 필라반도체)
     idx_map = {
         "나스닥 100": (".IXIC", "INDEXNASDAQ"),
         "S&P 500": (".INX", "INDEXSP"),
@@ -209,7 +190,7 @@ def get_global_market_status():
         "필라 반도체": ("SOX", "INDEXNASDAQ")
     }
     
-    # 2. 섹터별 대표 ETF 타겟 (방법 A)
+    # 2. 섹터별 대표 ETF (방법 A)
     etf_map = [
         ("반도체 (SOXX)", "SOXX", "반도체"),
         ("로봇/AI (BOTZ)", "BOTZ", "로봇/AI"),
@@ -218,21 +199,19 @@ def get_global_market_status():
     ]
     
     try:
-        # 지수 크롤링 수행
         for name, (tk, mkt) in idx_map.items():
             p, r = fetch_google_finance_data(tk, mkt)
             indices.append({"name": name, "value": p, "delta": r})
             
-        # ETF 크롤링 수행 (섹터 전체 분위기 파악)
         for name, tk, sector in etf_map:
             _, r = fetch_google_finance_data(tk, "NASDAQ")
             themes.append({"name": name, "delta": r, "color": SECTOR_COLORS.get(sector, "#ffffff")})
             
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
-        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n미국 주요 ETF 분석 결과, 섹터별 실질 수급이 반영되었습니다."
-    except Exception as e:
-        st.session_state.global_briefing = f"데이터 로드 지연 중: {str(e)}"
+        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n미국 ETF 분석 결과, 각 섹터별 실질 수급이 반영되었습니다."
+    except:
+        st.session_state.global_briefing = "해외 서버의 응답이 늦어지고 있습니다. 잠시 후 재시도 바랍니다."
 
 # --- [3] 준비 엔진: 테마 DB 전체 크롤링 및 저장 ---
 def update_theme_db():
@@ -311,10 +290,10 @@ def format_volume_to_jo_eok(x_million):
 with st.sidebar:
     st.title("🌐 글로벌 증시")
     if st.button("🚀 글로벌 실시간 스캔", use_container_width=True):
-        with st.spinner("해외 지수 및 ETF 분석 중..."):
+        with st.spinner("해외 분석 동기화 중..."):
             get_global_market_status()
 
-    # 지수 정보 섹션
+    # 지수 정보 섹션 (글자 크기 축소 반영)
     if st.session_state.global_indices:
         for idx in st.session_state.global_indices:
             st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'], delta_color="normal" if '+' in idx['delta'] else "inverse")
@@ -349,7 +328,7 @@ with tab_scanner:
 
     with col_main:
         if st.button("🚀 국내 실시간 스캔 실행", use_container_width=True):
-            with st.spinner("국내 시장 수급 분석 중..."):
+            with st.spinner("시장 수급 분석 중..."):
                 df_k = fetch_market_data(0, '코스피'); df_q = fetch_market_data(1, '코스닥')
                 df = pd.concat([df_k, df_q], ignore_index=True)
                 if not df.empty:
@@ -366,7 +345,6 @@ with tab_scanner:
                     df['섹터'] = df.apply(apply_mega_sector, axis=1)
                     st.session_state.domestic_df = df
 
-        # 국내 주도주 출력 영역
         if not st.session_state.domestic_df.empty:
             df = st.session_state.domestic_df
             st.subheader(f"🔥 실시간 주도주 ({len(df)}개)")
@@ -392,7 +370,6 @@ with tab_scanner:
                     </div>
                 """, unsafe_allow_html=True)
 
-            # 우측 섹터 현황 업데이트 (칼정렬 적용)
             with summary_placeholder.container():
                 sector_group = df[df['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
                 if not sector_group.empty:
