@@ -8,6 +8,7 @@ import os
 import re
 import json
 import google.generativeai as genai
+from urllib.parse import quote  # 💡 네이버 금융 검색용 인코딩 모듈 추가
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -15,7 +16,7 @@ st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보�
 THEME_DB_FILE = "theme_db.csv"
 
 # ==========================================
-# 🛡️ [Security] Gemini API 키 및 모델 엔진 설정 (오류 수정 핵심)
+# 🛡️ [Security] Gemini API 키 및 모델 엔진 설정
 # ==========================================
 if "GEMINI_API_KEY" in st.secrets:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
@@ -207,7 +208,7 @@ SECTOR_COLORS = {
 
 CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
 
-# --- [2] 미 증시 엔진: 네이버 금융 통합 및 듀얼 크롤링 로직 (안정성 확보) ---
+# --- [2] 미 증시 엔진: 네이버 금융 통합 및 듀얼 크롤링 로직 ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
@@ -255,13 +256,11 @@ def get_global_market_status():
     indices = []
     themes = []
     idx_map = {"나스닥 100": "^NDX", "S&P 500": "^GSPC", "다우존스": "^DJI"}
-    
     try:
         for name, tk in idx_map.items():
             v, r = fetch_robust_finance(tk)
             indices.append({"name": name, "value": v, "delta": r})
             time.sleep(0.2)
-        
         sox_v, sox_r = fetch_sox_stable()
         if not sox_v: sox_v, sox_r = fetch_robust_finance("^SOX")
         indices.append({"name": "필라 반도체", "value": sox_v, "delta": sox_r})
@@ -271,12 +270,12 @@ def get_global_market_status():
             _, r_etf = fetch_robust_finance(tk)
             themes.append({"name": name, "delta": r_etf, "color": SECTOR_COLORS.get(sector, "#ffffff")})
             time.sleep(0.2)
-            
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
         st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 지수 및 전력/원전 테마 복구가 완료되었습니다."
     except: st.session_state.global_briefing = "해외 서버 동기화 일시 지연 중"
 
+# --- [3] 준비 엔진: 테마 DB 전체 크롤링 및 로컬 저장 ---
 def update_theme_db():
     session = requests.Session()
     session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -290,7 +289,6 @@ def update_theme_db():
             soup = BeautifulSoup(res.text, 'html.parser')
             links = soup.select('.type_1.theme td.col_type1 a')
             for link in links: theme_links.append((link.text.strip(), "https://finance.naver.com" + link['href']))
-        
         total_themes = len(theme_links)
         for idx, (theme_name, link) in enumerate(theme_links):
             status_text.text(f"🚀 테마 DB 갱신 중... ({idx+1}/{total_themes})")
@@ -304,48 +302,75 @@ def update_theme_db():
                     if theme_name not in theme_dict[name]: theme_dict[name] += f", {theme_name}"
                 else: theme_dict[name] = theme_name
             time.sleep(0.02)
-            
         pd.DataFrame(list(theme_dict.items()), columns=['종목명', '테마']).to_csv(THEME_DB_FILE, index=False, encoding='utf-8-sig')
         status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
 
-# --- [4] 💡 종목 정밀 분석 엔진 (디버깅 로직 추가) ---
+# --- [4] 💡 종목 정밀 분석 엔진 (설계 1, 2 결합: 궁극의 듀얼 크롤링) ---
 
 def fetch_stock_news_headlines(stock_name):
+    # 기본 브라우저 위장 (설계 3: Referer 추가)
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8'
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
+        'Referer': 'https://finance.naver.com/'
     }
     
-    url = "https://search.naver.com/search.naver"
-    params = {
-        'where': 'news',
-        'query': f'특징주 {stock_name}',
-        'sort': '0' 
-    }
+    titles = []
     
+    # [설계 2] 1차 사냥터: '네이버 금융 뉴스' (태그 변형 적음, 정확도 높음)
     try:
-        res = requests.get(url, params=params, headers=headers, timeout=10)
+        # 네이버 금융은 EUC-KR 인코딩을 사용하므로 한글을 직접 인코딩해서 던집니다.
+        encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
+        fin_url = f"https://finance.naver.com/news/news_search.naver?q={encoded_kw}"
+        res_fin = requests.get(fin_url, headers=headers, timeout=10)
+        res_fin.encoding = 'euc-kr' # 강제 디코딩
         
-        # 💡 원인 분석 1: 상태 코드가 200(정상)이 아니면 네이버가 IP를 차단한 것입니다.
-        if res.status_code != 200:
-            return [f"[에러] 네이버 서버 차단됨 (응답 코드: {res.status_code})"]
+        if res_fin.status_code == 200:
+            soup_fin = BeautifulSoup(res_fin.text, 'html.parser')
+            # [설계 1] 금융 페이지 내 다중 셀렉터
+            tags = soup_fin.select(".articleSubject a") or soup_fin.select(".tit") or soup_fin.select("dt a")
+            for tag in tags[:10]:
+                text = tag.text.strip()
+                if text: titles.append(text)
+    except:
+        pass # 금융 탭 실패 시 아래 통합 검색으로 조용히 넘어갑니다.
+
+    # [설계 2 보완] 2차 사냥터: '네이버 통합 뉴스' (금융에서 못 찾았을 경우 대비용)
+    if not titles:
+        try:
+            gen_url = "https://search.naver.com/search.naver"
+            params = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'} # 관련도순
+            headers['Referer'] = 'https://search.naver.com/' # 통합검색용 위장
             
-        soup = BeautifulSoup(res.text, 'html.parser')
-        title_tags = soup.select(".news_tit")
-        titles = []
+            res_gen = requests.get(gen_url, params=params, headers=headers, timeout=10)
+            if res_gen.status_code == 200:
+                soup_gen = BeautifulSoup(res_gen.text, 'html.parser')
+                
+                # [설계 1] 궁극의 그물망: 네이버가 꼬아놓은 모든 클래스명을 순차적으로 찌름
+                selectors = [".news_tit", ".title_link", "a.news_tit", ".dsc_txt_tit", ".api_txt_lines", ".link_txt"]
+                for sel in selectors:
+                    tags = soup_gen.select(sel)
+                    if tags: # 해당 태그를 찾았다면!
+                        for tag in tags[:10]:
+                            text = tag.text.strip()
+                            if text: titles.append(text)
+                        break # 한 종류의 태그로 리스트를 채웠으면 더 이상 다른 태그를 찾지 않음
+        except:
+            pass
+            
+    # 💡 최후의 보루: 양쪽 다 실패했다면 디버깅 에러 출력
+    if not titles:
+        return [f"[에러] 네이버 검색 전면 차단됨 (1, 2차 사냥터 모두 실패)"]
         
-        for tag in title_tags[:10]:
-            titles.append(tag.text.strip())
+    # 리스트 순서를 유지하면서 중복된 기사 제목 제거
+    unique_titles = []
+    for t in titles:
+        if t not in unique_titles:
+            unique_titles.append(t)
             
-        # 💡 원인 분석 2: 정상 접속은 됐는데, 원하는 태그명(.news_tit)이 없는 경우입니다.
-        if not titles:
-            return [f"[에러] 접속은 성공했으나 뉴스 제목을 못 찾음 (검색 결과가 없거나, HTML 태그 변경됨. HTML 길이: {len(res.text)})"]
-            
-        return titles
-    except Exception as e:
-        return [f"[에러] 통신 자체 실패: {str(e)}"]
+    return unique_titles[:10]
 
 def perform_batch_analysis(news_map):
     if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
@@ -356,14 +381,14 @@ def perform_batch_analysis(news_map):
         
         prompt = f"""
         당신은 한국 주식 퀀트 분석 전문가입니다. 
-        아래 데이터는 실시간 주도주들에 대해 네이버 뉴스(관련도순) 제목을 종목당 최대 10개씩 크롤링한 결과입니다.
+        아래 데이터는 실시간 주도주들에 대해 네이버 뉴스 제목을 종목당 최대 10개씩 크롤링한 결과입니다.
         
         [데이터]
         {json.dumps(news_map, ensure_ascii=False)}
         
         [출력 양식 및 분석 규칙]
         1. 각 종목당 제공된 여러 개의 뉴스 제목을 모두 읽고, 해당 종목이 상승한 '진짜 핵심 재료'를 파악하세요.
-        2. 만약 제공된 데이터에 "[에러]" 라는 단어가 포함되어 있다면, 분석하지 말고 그대로 "[에러] 크롤링 실패" 라고 이유에 적어주세요.
+        2. 만약 제공된 데이터에 "[에러]" 라는 단어가 포함되어 있다면, 분석하지 말고 그대로 "[에러] 크롤링 실패 (차단)" 라고 이유에 적어주세요.
         3. 각 종목을 아래 형식으로 한 줄씩 출력하세요:
         • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} (최근 특징주)
         4. 섹터는 '반도체', '2차전지', '바이오', '로봇/AI', '전력/원전', '방산/우주항공', '금융/지주', '개별주' 중 하나를 선택하세요.
@@ -406,7 +431,7 @@ def format_volume_to_jo_eok(x_million):
         return f"{eok // 10000}조 {eok % 10000}억" if eok >= 10000 else f"{eok}억"
     except: return str(x_million)
 
-# --- [6] UI 레이아웃 구성 (무삭제 마스터) ---
+# --- [6] UI 레이아웃 구성 ---
 
 with st.sidebar:
     st.title("🌐 글로벌 증시")
@@ -481,11 +506,10 @@ with tab_analysis:
                 for i, name in enumerate(stocks):
                     news_payload[name] = fetch_stock_news_headlines(name)
                     progress_bar.progress((i + 1) / len(stocks))
-                    time.sleep(2.0)
+                    time.sleep(2.0) # 💡 IP 차단 방지 대기 시간 (절대 삭제 금지)
                 
-                # 💡 핵심 디버깅 UI: 제미나이에게 데이터를 던지기 전에 화면에 먼저 출력해봅니다.
-                with st.expander("🚨 [디버깅] 크롤러가 수집한 원본 데이터 확인 (클릭해서 열어보세요)", expanded=True):
-                    st.write("아래 데이터가 전부 `[에러]`로 적혀 있다면 네이버가 접근을 완전히 막은 것입니다.")
+                with st.expander("🚨 [디버깅] 크롤러가 수집한 듀얼 검색 결과 확인", expanded=True):
+                    st.write("금융 뉴스 탭과 통합 뉴스 탭을 모두 뒤져 가져온 10개 기사 원본입니다.")
                     st.json(news_payload)
                 
                 st.session_state.analysis_results = perform_batch_analysis(news_payload)
