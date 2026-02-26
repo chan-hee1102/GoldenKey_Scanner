@@ -315,31 +315,25 @@ def fetch_stock_news_headline(stock_name):
         return {"title": "최근 1개월 내 특징주 뉴스 없음", "date": "-"}
     except: return {"title": "뉴스 수집 실패", "date": "-"}
 
+# 수정된 perform_batch_analysis 함수 부분
 def perform_batch_analysis(news_map):
-    """Gemini 1.5 Flash 404 오류 수정을 위한 정밀 호출 로직"""
-    if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
-        return ["⚠️ Gemini API 키를 Streamlit Cloud Secrets에 설정해 주세요."]
+    if not GEMINI_API_KEY:
+        return ["⚠️ Gemini API 키가 설정되지 않았습니다."]
     
     try:
-        # 💡 핵심 수정: 모델 인스턴스 생성을 함수 내부로 이동하여 매번 최신 설정으로 선언
-        analysis_model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+        # 모델명을 'gemini-1.5-flash'로 정확히 지정 (404 오류 해결 핵심)
+        model_engine = genai.GenerativeModel('gemini-1.5-flash')
         
         prompt = f"""
         당신은 한국 주식 전문가입니다. 아래 종목들의 최근 뉴스 제목을 분석하여 재료의 본질을 파악하세요.
-        
-        [데이터]
-        {json.dumps(news_map, ensure_ascii=False)}
-        
-        [출력 양식 규칙]
-        각 종목을 아래 형식으로 한 줄씩 출력하세요:
-        • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} ({{뉴스날짜}} 특징주)
-        
-        섹터는 '반도체', '2차전지', '바이오', '로봇/AI', '전력/원전', '방산/우주항공', '금융/지주', '개별주' 중 하나를 선택하세요.
+        [데이터]: {json.dumps(news_map, ensure_ascii=False)}
+        양식: • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} ({{뉴스날짜}} 특징주)
         """
-        response = analysis_model.generate_content(prompt)
+        # 최신 라이브러리 규격에 맞는 호출
+        response = model_engine.generate_content(prompt)
         return response.text.strip().split("\n")
     except Exception as e:
-        return [f"Gemini 분석 오류: {str(e)}", "💡 해결팁: API 키 권한이나 할당량을 확인해 주세요."]
+        return [f"Gemini 분석 오류: {str(e)}", "💡 해결팁: API 키 차단 여부와 모델명을 확인하세요."]
 
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
