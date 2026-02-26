@@ -26,6 +26,14 @@ st.markdown(
         background: #f1f5f9;
     }
 
+    /* 메인 타이틀 정렬을 위한 컨테이너 */
+    .title-container {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+    }
+
     /* 슬림 종목 카드 */
     .stock-card {
         background: white;
@@ -82,15 +90,32 @@ st.markdown(
         font-weight: 700;
     }
 
-    /* 섹터 리스트 아이템 */
+    /* 🌟 우측 섹터 리스트 아이템 정렬 통일 🌟 */
     .sector-item {
         font-size: 0.85rem;
         color: #334155;
-        padding: 5px 0;
+        padding: 6px 0;
         display: flex;
         justify-content: space-between;
+        align-items: center;
         border-bottom: 1px inset #f1f5f9;
+        width: 100%;
     }
+
+    .sector-item-left {
+        display: flex;
+        align-items: center;
+        flex: 1;
+    }
+
+    .sector-item-right {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        justify-content: flex-end;
+        min-width: 130px;
+    }
+
     .leader-label {
         font-size: 0.65rem;
         background: #ef4444;
@@ -98,6 +123,7 @@ st.markdown(
         padding: 1px 4px;
         border-radius: 3px;
         margin-right: 5px;
+        flex-shrink: 0;
     }
     </style>
     """,
@@ -118,9 +144,6 @@ SECTOR_COLORS = {
     '개별주': '#ffffff'
 }
 
-# ==========================================
-# 🌟 [트레이더 전용] 커스텀 섹터 매핑 사전
-# ==========================================
 CUSTOM_SECTOR_MAP = {
     "온코닉테라퓨틱스": "바이오",
     "현대ADM": "바이오",
@@ -128,13 +151,11 @@ CUSTOM_SECTOR_MAP = {
 
 # --- [2] 미 증시 및 글로벌 테마 데이터 엔진 ---
 def get_global_market_status():
-    # 지수 정보 (한국인이 가장 중요하게 보는 3대 지수)
     indices = [
         {"name": "나스닥 (기술주)", "value": "18,302", "delta": "+1.24%"},
         {"name": "S&P 500 (우량주)", "value": "5,137", "delta": "+0.85%"},
         {"name": "필라델피아 반도체", "value": "4,929", "delta": "+2.10%"}
     ]
-    # 테마 정보 (한국 시장과 커플링되는 핵심 섹터)
     themes = [
         {"name": "반도체", "delta": "+3.5%", "color": SECTOR_COLORS['반도체']},
         {"name": "로봇/AI", "delta": "+2.8%", "color": SECTOR_COLORS['로봇/AI']},
@@ -223,15 +244,12 @@ def format_volume_to_jo_eok(x_million):
 
 # --- [6] UI 레이아웃 구성 ---
 
-# 1. 사이드바 (글로벌 정보 한글화 및 컬러 동기화)
+# 1. 사이드바
 with st.sidebar:
     st.title("🌐 글로벌 증시")
     indices, themes, briefing = get_global_market_status()
-    
-    # 주요 지수
     for idx in indices:
         st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'], delta_color="normal" if '+' in idx['delta'] else "inverse")
-    
     st.markdown("---")
     st.subheader("🇺🇸 미국 테마 흐름")
     st.caption("한국 시장과 커플링되는 주요 섹터")
@@ -243,13 +261,19 @@ with st.sidebar:
                 <span style="color: {val_color};">{t['delta']}</span>
             </div>
         """, unsafe_allow_html=True)
-    
     st.info(f"📍 **전문가 브리핑:**\n{briefing}")
-    st.markdown("---")
-    if st.button("🔄 테마 DB 최신화", use_container_width=True): update_theme_db()
 
 # 2. 메인 화면
-st.title("🔑 Golden Key Pro")
+# 🌟 [요청사항] 타이틀과 버튼을 한 줄로 배치 🌟
+col_title, col_btn = st.columns([7, 3])
+with col_title:
+    st.title("🔑 Golden Key Pro")
+with col_btn:
+    st.write("") # 수직 정렬을 위한 공백
+    st.write("")
+    if st.button("🔄 테마 DB 최신화", use_container_width=True): 
+        update_theme_db()
+
 tab_scanner, tab_analysis = st.tabs(["🚀 실시간 주도주 스캐너", "📊 종목 정밀 분석"])
 
 with tab_scanner:
@@ -278,7 +302,8 @@ with tab_scanner:
                     if os.path.exists(THEME_DB_FILE):
                         theme_df = pd.read_csv(THEME_DB_FILE)
                         df['테마'] = df['종목명'].map(dict(zip(theme_df['종목명'], theme_df['테마']))).fillna('-')
-                    else: df['테마'] = '-'
+                    else: 
+                        df['테마'] = '-'
                     
                     df['섹터'] = df.apply(apply_mega_sector, axis=1)
 
@@ -286,15 +311,14 @@ with tab_scanner:
 
                     for _, row in df.iterrows():
                         bg_color = SECTOR_COLORS.get(row['섹터'], '#ffffff')
-                        m_class = "market-kospi" if row['시장'] == '코스피' else "market-kosdaq"
-
+                        m_class = "market-tag " + ("market-kospi" if row['시장'] == '코스피' else "market-kosdaq")
                         rv = row['등락률_num']
                         rate_color = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1f2937")
 
                         st.markdown(f"""
                             <div class="stock-card">
                                 <div class="left-zone">
-                                    <span class="market-tag {m_class}">{row['시장']}</span>
+                                    <span class="{m_class}">{row['시장']}</span>
                                     <span class="stock-name">{row['종목명']}</span>
                                 </div>
                                 <div class="center-zone">
@@ -307,28 +331,33 @@ with tab_scanner:
                             </div>
                         """, unsafe_allow_html=True)
 
-                    # 우측 섹터 현황 업데이트 (상승률별 색상 구분 추가)
+                    # 우측 섹터 현황 업데이트 (상승률별 색상 및 정렬 통일)
                     with summary_placeholder.container():
                         sector_group = df[df['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
                         if not sector_group.empty:
                             for s_name, count in sector_group.items():
+                                bg_c = SECTOR_COLORS.get(s_name, '#ffffff')
                                 with st.expander(f"**{s_name}** ({count})", expanded=True):
                                     s_stocks = df[df['섹터'] == s_name].sort_values('등락률_num', ascending=False)
                                     for i, (idx, s_row) in enumerate(s_stocks.iterrows()):
                                         leader_tag = '<span class="leader-label">대장</span>' if i == 0 else ''
-                                        
-                                        # 등락률 숫자에 따른 색상 선정
                                         s_rv = s_row['등락률_num']
+                                        # 🌟 등락률에 따른 색상 구분 🌟
                                         s_rate_color = "#ef4444" if s_rv >= 20.0 else ("#22c55e" if s_rv >= 10.0 else "#334155")
                                         
+                                        # 🌟 정렬을 맞춘 새로운 구조 🌟
                                         st.markdown(f"""
                                         <div class="sector-item">
-                                            <span>{leader_tag}<b>{s_row['종목명']}</b></span>
-                                            <span style="color:{s_rate_color}; font-weight:800;">+{s_rv}%</span>
-                                            <span style="color:#64748b; font-size:0.8rem;">{format_volume_to_jo_eok(s_row['거래대금_num'])}</span>
+                                            <div class="sector-item-left">
+                                                {leader_tag}<b>{s_row['종목명']}</b>
+                                            </div>
+                                            <div class="sector-item-right">
+                                                <span style="color:{s_rate_color}; font-weight:800;">+{s_rv}%</span>
+                                                <span style="color:#64748b; font-size:0.8rem;">{format_volume_to_jo_eok(s_row['거래대금_num'])}</span>
+                                            </div>
                                         </div>
                                         """, unsafe_allow_html=True)
-                        else: st.info("주도 섹터 없음")
+                        else: st.info("주도 섹터 없음. '테마 DB 최신화'를 눌러보세요.")
                 else: st.info("데이터 없음")
 
 with tab_analysis:
