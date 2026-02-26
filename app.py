@@ -107,15 +107,17 @@ st.markdown(
     div[data-testid="stExpander"] summary { padding: 4px 12px !important; font-weight: 700 !important; }
     div[data-testid="stExpanderDetails"] { padding: 6px 10px !important; background-color: white !important; }
 
-    /* 사이드바 테마 스타일 */
+    /* 사이드바 스타일 최적화 */
     .sidebar-theme-row {
         display: flex;
         justify-content: space-between;
-        font-size: 0.85rem;
-        padding: 10px 12px;
-        margin-bottom: 8px;
-        border-radius: 8px;
+        font-size: 0.82rem;
+        padding: 6px 8px;
+        margin-bottom: 4px;
+        border-radius: 6px;
         font-weight: 700;
+        background: #ffffff;
+        border-left: 3px solid #cbd5e1;
     }
     </style>
     """,
@@ -123,7 +125,7 @@ st.markdown(
 )
 
 # ==========================================
-# 🌟 세션 상태(Session State) 초기화 (데이터 유지용)
+# 🌟 세션 상태(Session State) 초기화
 # ==========================================
 if 'global_indices' not in st.session_state: st.session_state.global_indices = []
 if 'global_themes' not in st.session_state: st.session_state.global_themes = []
@@ -146,48 +148,55 @@ CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바�
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
+def fetch_google_finance(ticker, market="INDEXNASDAQ"):
+    """구글 파이낸스에서 종가 및 등락률 크롤링"""
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        url = f"https://www.google.com/finance/quote/{ticker}:{market}"
+        res = requests.get(url, headers=headers, timeout=10)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        
+        # 구글 파이낸스 데이터 셀렉터
+        price = soup.select_one(".YMlKec.fxKb9b").text
+        rate = soup.select_one(".Jw796").text.replace('(', '').replace(')', '').strip()
+        return price, rate
+    except:
+        return "N/A", "0.00%"
+
 def get_global_market_status():
-    """🌟 외부 라이브러리 없이 네이버 금융을 통한 안정적 크롤링 🌟"""
+    """🌟 3대 지수 및 주요 테마별 핵심 종목 분석 로직 🌟"""
+    # 1. 미국 3대 지수 크롤링
     indices = []
-    # 네이버 금융 세계지수 심볼 기반 URL
-    targets = {
-        "나스닥": "https://finance.naver.com/world/sise.naver?symbol=NAS@IXIC",
-        "S&P 500": "https://finance.naver.com/world/sise.naver?symbol=SPI@SPX",
-        "필라델피아 반도체": "https://finance.naver.com/world/sise.naver?symbol=PHX@SOX"
+    idx_targets = {
+        "나스닥 100": (".IXIC", "INDEXNASDAQ"),
+        "S&P 500": (".INX", "INDEXSP"),
+        "다우존스": (".DJI", "INDEXDJX"),
+        "필라 반도체": ("SOX", "INDEXNASDAQ")
     }
     
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
-        
-        for name, url in targets.items():
-            res = requests.get(url, headers=headers, timeout=10)
-            soup = BeautifulSoup(res.text, 'html.parser')
-            
-            # 네이버 금융 세계지수 상세페이지 데이터 추출
-            val_tag = soup.select_one("#now_value")
-            rate_tag = soup.select_one("#st_rate_value")
-            
-            if val_tag and rate_tag:
-                val = val_tag.text.strip()
-                rate = rate_tag.text.strip() + "%"
-                indices.append({"name": name, "value": val, "delta": rate})
-            else:
-                indices.append({"name": name, "value": "연결 지연", "delta": "0.00%"})
-        
-        # 크롤링한 지수 정보를 바탕으로 테마 데이터 연동
-        if len(indices) >= 3:
-            themes = [
-                {"name": "반도체", "delta": indices[2]['delta'], "color": SECTOR_COLORS['반도체']},
-                {"name": "로봇/AI", "delta": indices[0]['delta'], "color": SECTOR_COLORS['로봇/AI']},
-                {"name": "2차전지", "delta": indices[1]['delta'], "color": SECTOR_COLORS['2차전지']},
-                {"name": "전력/원전", "delta": "+0.32%", "color": SECTOR_COLORS['전력/원전']}
-            ]
-            st.session_state.global_indices = indices
-            st.session_state.global_themes = themes
-            st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 데이터가 성공적으로 크롤링되었습니다. 지수 흐름을 확인하세요."
-        
-    except Exception as e:
-        st.session_state.global_briefing = "데이터 소스 접근 제한 중 (일시적 트래픽 과부하)"
+    for name, (ticker, mkt) in idx_targets.items():
+        p, r = fetch_google_finance(ticker, mkt)
+        indices.append({"name": name, "value": p, "delta": r})
+    
+    # 2. 히트맵 테마별 핵심 종목 (Technology, Consumer, Financial 등)
+    theme_stocks = []
+    # (종목명, 티커, 소속섹터)
+    bt_targets = [
+        ("Nvidia (반도체)", "NVDA", "반도체"),
+        ("Apple (테크)", "AAPL", "로봇/AI"),
+        ("Microsoft (테크)", "MSFT", "로봇/AI"),
+        ("Tesla (모빌리티)", "TSLA", "2차전지"),
+        ("Amazon (소비재)", "AMZN", "개별주"),
+        ("Google (AI/플랫폼)", "GOOGL", "로봇/AI")
+    ]
+    
+    for name, ticker, sector in bt_targets:
+        _, r = fetch_google_finance(ticker, "NASDAQ")
+        theme_stocks.append({"name": name, "delta": r, "color": SECTOR_COLORS.get(sector, "#ffffff")})
+
+    st.session_state.global_indices = indices
+    st.session_state.global_themes = theme_stocks
+    st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n미국 3대 지수 및 핵심 테마(히트맵 주요주) 분석이 완료되었습니다."
 
 def update_theme_db():
     session = requests.Session(); session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -234,10 +243,10 @@ def apply_mega_sector(row):
     keywords = {
         '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '메모리', 'NPU', '유리기판'],
         '2차전지': ['2차전지', '리튬', '배터리', 'LFP', '양극재'],
-        '바이오': ['바이오', '제약', '신약', '임상'],
-        '로봇/AI': ['로봇', 'AI', '인공지능'],
+        '바이오': ['바이오', '제약', '신약', '의료기기', '임상'],
+        '로봇/AI': ['로봇', 'AI', '인공지능', '챗봇'],
         '전력/원전': ['전력', '전선', '원자력', '변압기'],
-        '방산/우주': ['방산', '우주', '항공'],
+        '방산/우주': ['방산', '우주', '항공', '조선'],
         '금융/지주': ['지주사', '은행', '보험', '밸류업']
     }
     for sector, keys in keywords.items():
@@ -256,19 +265,29 @@ def format_volume_to_jo_eok(x_million):
 with st.sidebar:
     st.title("🌐 글로벌 증시")
     if st.button("🚀 글로벌 실시간 스캔", use_container_width=True):
-        with st.spinner("데이터 동기화 중..."):
+        with st.spinner("해외 데이터 분석 중..."):
             get_global_market_status()
 
+    # 지수 섹션
     if st.session_state.global_indices:
         for idx in st.session_state.global_indices:
-            st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'], delta_color="normal" if '+' in str(idx['delta']) else "inverse")
+            st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'], delta_color="normal" if '+' in idx['delta'] else "inverse")
     
     st.markdown("---")
-    st.subheader("🇺🇸 미국 테마 흐름")
+    
+    # 🌟 미국 히트맵 테마 섹션 🌟
+    st.subheader("🇺🇸 미국 테마(히트맵) 흐름")
     if st.session_state.global_themes:
         for t in st.session_state.global_themes:
-            v_c = "#ef4444" if '+' in str(t['delta']) else "#2563eb"
-            st.markdown(f'<div class="sidebar-theme-row" style="background-color: {t["color"]};"><span style="color: #1e293b;">{t["name"]}</span><span style="color: {v_c};">{t["delta"]}</span></div>', unsafe_allow_html=True)
+            v_c = "#ef4444" if '+' in t['delta'] else "#2563eb"
+            st.markdown(f"""
+                <div class="sidebar-theme-row" style="background-color: {t["color"]};">
+                    <span style="color: #1e293b;">{t["name"]}</span>
+                    <span style="color: {v_c};">{t["delta"]}</span>
+                </div>
+            """, unsafe_allow_html=True)
+    else:
+        st.info("글로벌 스캔을 실행하면 테마별 흐름이 표시됩니다.")
     
     st.info(f"📍 **전문가 브리핑:**\n{st.session_state.global_briefing}")
 
@@ -290,7 +309,7 @@ with tab_scanner:
                 df_k = fetch_market_data(0, '코스피'); df_q = fetch_market_data(1, '코스닥')
                 df_scan = pd.concat([df_k, df_q], ignore_index=True)
                 if not df_scan.empty:
-                    df_scan = df_scan[~df_scan['종목명'].str.contains('KODEX|TIGER|KBSTAR|스팩', na=False)]
+                    df_scan = df_scan[~df_scan['종목명'].str.contains('KODEX|TIGER|KBSTAR|ACE|SOL|스팩', na=False)]
                     df_scan['등락률_num'] = pd.to_numeric(df_scan['등락률'].str.replace('%|\+', '', regex=True), errors='coerce')
                     df_scan['거래대금_num'] = pd.to_numeric(df_scan['거래대금'].str.replace(',', ''), errors='coerce')
                     df_scan = df_scan.sort_values(by='거래대금_num', ascending=False).head(100)
@@ -336,4 +355,4 @@ with tab_scanner:
                         s_rv = s_row['등락률_num']
                         s_rt_c = "#ef4444" if s_rv >= 20.0 else ("#22c55e" if s_rv >= 10.0 else "#334155")
                         st.markdown(f'<div class="sector-item"><div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div><div class="sector-item-right"><span class="val-rate" style="color:{s_rt_c};">+{s_rv}%</span><span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
-        else: st.info("국내 주도주를 먼저 스캔하세요.")
+        else: st.info("국내 실시간 스캔을 실행하세요.")
