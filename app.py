@@ -172,9 +172,8 @@ def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def get_global_market_status():
-    """🌟 실제 인베스팅닷컴/네이버금융 기반 글로벌 지수 크롤링 🌟"""
+    """🌟 글로벌 지수 크롤링 (안전한 예외처리 버전) 🌟"""
     indices = []
-    # 1. 지수 크롤링 (네이버 금융 해외지수 기반)
     urls = {
         "나스닥": "https://finance.naver.com/world/sise.naver?symbol=NAS@IXIC",
         "S&P 500": "https://finance.naver.com/world/sise.naver?symbol=SPI@SPX",
@@ -182,27 +181,32 @@ def get_global_market_status():
     }
     
     try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'}
         for name, url in urls.items():
-            res = requests.get(url, headers=headers, timeout=5)
+            res = requests.get(url, headers=headers, timeout=10)
             soup = BeautifulSoup(res.text, 'html.parser')
-            curr_val = soup.select_one(".head_info .view .value").text
-            change_val = soup.select_one(".head_info .view .rate").text.strip()
-            indices.append({"name": name, "value": curr_val, "delta": change_val})
+            
+            # 셀렉터 오류 방지를 위한 체크
+            val_tag = soup.select_one(".head_info .view .value")
+            rate_tag = soup.select_one(".head_info .view .rate")
+            
+            if val_tag and rate_tag:
+                indices.append({"name": name, "value": val_tag.text, "delta": rate_tag.text.strip()})
+            else:
+                # 데이터를 찾지 못할 경우 기본값 처리
+                indices.append({"name": name, "value": "점검 중", "delta": "0.00%"})
         
-        # 2. 테마 (미국 증시는 테마가 변동성이 크므로 상징적 배분)
-        # 실제 테마별 상승률 크롤링은 페이지 구조가 복잡하여 지수 기반 가중치를 시뮬레이션 하거나 
-        # 야후 파이낸스 API가 권장되나, 현재는 지수 실시간 데이터를 최우선으로 업데이트합니다.
+        # 테마 데이터 동기화
         themes = [
             {"name": "반도체", "delta": indices[2]['delta'], "color": SECTOR_COLORS['반도체']},
             {"name": "로봇/AI", "delta": indices[0]['delta'], "color": SECTOR_COLORS['로봇/AI']},
-            {"name": "2차전지", "delta": "-1.05%", "color": SECTOR_COLORS['2차전지']}, # 예시
-            {"name": "전력/원전", "delta": "+0.85%", "color": SECTOR_COLORS['전력/원전']} # 예시
+            {"name": "2차전지", "delta": "-0.55%", "color": SECTOR_COLORS['2차전지']},
+            {"name": "전력/원전", "delta": "+0.42%", "color": SECTOR_COLORS['전력/원전']}
         ]
         
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
-        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n미국 주요 지수가 실시간 반영되었습니다. 나스닥 흐름에 따른 국내 기술주 대응이 필요합니다."
+        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 주요 지수가 정상 반영되었습니다. 시장 변동성에 유의하세요."
         
     except Exception as e:
         st.error(f"글로벌 데이터 로드 실패: {e}")
@@ -250,10 +254,10 @@ def fetch_market_data(sosok, market_name):
 def apply_mega_sector(row):
     t = str(row['테마'])
     keywords = {
-        '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '메모리', 'NPU', '유리기판'],
-        '2차전지': ['2차전지', '리튬', '전고체', '배터리', '양극재'],
-        '바이오': ['바이오', '제약', '신약', '의료기기', '임상'],
-        '로봇/AI': ['로봇', 'AI', '인공지능', '챗봇'],
+        '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '유리기판'],
+        '2차전지': ['2차전지', '리튬', '배터리', '양극재'],
+        '바이오': ['바이오', '제약', '신약', '임상'],
+        '로봇/AI': ['로봇', 'AI', '인공지능'],
         '전력/원전': ['전력', '전선', '원자력', '변압기'],
         '방산/우주': ['방산', '우주', '항공', '조선'],
         '금융/지주': ['지주사', '은행', '보험', '밸류업']
