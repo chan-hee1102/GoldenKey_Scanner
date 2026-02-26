@@ -118,7 +118,7 @@ st.markdown(
         flex-shrink: 0;
     }
 
-    /* 🌟 우측 섹터 버튼 영역만 간격 밀착 (범위 한정) 🌟 */
+    /* 우측 섹터 버튼 영역만 간격 밀착 */
     div[data-testid="column"]:nth-of-type(2) [data-testid="stVerticalBlock"] {
         gap: 0px !important;
     }
@@ -134,13 +134,13 @@ st.markdown(
     div[data-testid="stExpander"] summary { padding: 4px 12px !important; font-weight: 700 !important; }
     div[data-testid="stExpanderDetails"] { padding: 6px 10px !important; background-color: white !important; }
 
-    /* 사이드바 테마 스타일 (간격 복구) */
+    /* 사이드바 테마 스타일 */
     .sidebar-theme-row {
         display: flex;
         justify-content: space-between;
         font-size: 0.85rem;
         padding: 10px 12px;
-        margin-bottom: 8px; /* 간격 부여 */
+        margin-bottom: 8px;
         border-radius: 8px;
         font-weight: 700;
     }
@@ -150,15 +150,15 @@ st.markdown(
 )
 
 # ==========================================
-# 🌟 세션 상태(Session State) 초기화 (데이터 유지용)
+# 🌟 세션 상태(Session State) 초기화
 # ==========================================
 if 'global_indices' not in st.session_state: st.session_state.global_indices = []
 if 'global_themes' not in st.session_state: st.session_state.global_themes = []
-if 'global_briefing' not in st.session_state: st.session_state.global_briefing = "업데이트가 필요합니다."
+if 'global_briefing' not in st.session_state: st.session_state.global_briefing = "글로벌 스캔을 실행해 주세요."
 if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.DataFrame()
 
 # ==========================================
-# 🌟 전역 색상 설정
+# 🌟 전역 설정
 # ==========================================
 SECTOR_COLORS = {
     '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', 
@@ -166,35 +166,49 @@ SECTOR_COLORS = {
     '금융/지주': '#f3f4f6', '개별주': '#ffffff'
 }
 
-CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
-
 # --- [2] 데이터 로직 ---
 
 def get_kst_time():
-    # 한국 시간(KST)을 정확하게 반환
-    return datetime.now(timezone(timedelta(hours=9))).strftime('%H:%M:%S')
+    return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def get_global_market_status():
-    indices = [
-        {"name": "나스닥 (기술주)", "value": "18,302", "delta": "+1.24%"},
-        {"name": "S&P 500 (우량주)", "value": "5,137", "delta": "+0.85%"},
-        {"name": "필라델피아 반도체", "value": "4,929", "delta": "+2.10%"}
-    ]
-    themes = [
-        {"name": "반도체", "delta": "+3.5%", "color": SECTOR_COLORS['반도체']},
-        {"name": "로봇/AI", "delta": "+2.8%", "color": SECTOR_COLORS['로봇/AI']},
-        {"name": "2차전지", "delta": "-1.2%", "color": SECTOR_COLORS['2차전지']},
-        {"name": "전력/원전", "delta": "+1.1%", "color": SECTOR_COLORS['전력/원전']}
-    ]
-    briefing = f"업데이트 시간: {get_kst_time()}\n미국 엔비디아(AI)발 훈풍이 지속되고 있습니다. 국내 반도체 소부장 수급 동조화가 예상됩니다."
+    """🌟 실제 인베스팅닷컴/네이버금융 기반 글로벌 지수 크롤링 🌟"""
+    indices = []
+    # 1. 지수 크롤링 (네이버 금융 해외지수 기반)
+    urls = {
+        "나스닥": "https://finance.naver.com/world/sise.naver?symbol=NAS@IXIC",
+        "S&P 500": "https://finance.naver.com/world/sise.naver?symbol=SPI@SPX",
+        "필라델피아 반도체": "https://finance.naver.com/world/sise.naver?symbol=PHX@SOX"
+    }
     
-    st.session_state.global_indices = indices
-    st.session_state.global_themes = themes
-    st.session_state.global_briefing = briefing
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        for name, url in urls.items():
+            res = requests.get(url, headers=headers, timeout=5)
+            soup = BeautifulSoup(res.text, 'html.parser')
+            curr_val = soup.select_one(".head_info .view .value").text
+            change_val = soup.select_one(".head_info .view .rate").text.strip()
+            indices.append({"name": name, "value": curr_val, "delta": change_val})
+        
+        # 2. 테마 (미국 증시는 테마가 변동성이 크므로 상징적 배분)
+        # 실제 테마별 상승률 크롤링은 페이지 구조가 복잡하여 지수 기반 가중치를 시뮬레이션 하거나 
+        # 야후 파이낸스 API가 권장되나, 현재는 지수 실시간 데이터를 최우선으로 업데이트합니다.
+        themes = [
+            {"name": "반도체", "delta": indices[2]['delta'], "color": SECTOR_COLORS['반도체']},
+            {"name": "로봇/AI", "delta": indices[0]['delta'], "color": SECTOR_COLORS['로봇/AI']},
+            {"name": "2차전지", "delta": "-1.05%", "color": SECTOR_COLORS['2차전지']}, # 예시
+            {"name": "전력/원전", "delta": "+0.85%", "color": SECTOR_COLORS['전력/원전']} # 예시
+        ]
+        
+        st.session_state.global_indices = indices
+        st.session_state.global_themes = themes
+        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n미국 주요 지수가 실시간 반영되었습니다. 나스닥 흐름에 따른 국내 기술주 대응이 필요합니다."
+        
+    except Exception as e:
+        st.error(f"글로벌 데이터 로드 실패: {e}")
 
 def update_theme_db():
-    session = requests.Session()
-    session.headers.update({'User-Agent': 'Mozilla/5.0'})
+    session = requests.Session(); session.headers.update({'User-Agent': 'Mozilla/5.0'})
     theme_dict = {}
     progress_bar = st.progress(0); status_text = st.empty()
     try:
@@ -214,7 +228,7 @@ def update_theme_db():
             for stock in stocks:
                 name = stock.text.strip()
                 theme_dict[name] = theme_dict.get(name, "") + (", " if name in theme_dict else "") + theme_name
-            time.sleep(0.05)
+            time.sleep(0.01)
         pd.DataFrame(list(theme_dict.items()), columns=['종목명', '테마']).to_csv(THEME_DB_FILE, index=False, encoding='utf-8-sig')
         status_text.success("✅ 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
@@ -234,16 +248,15 @@ def fetch_market_data(sosok, market_name):
     except: return pd.DataFrame()
 
 def apply_mega_sector(row):
-    stock_name = row['종목명']; t = str(row['테마'])
-    if stock_name in CUSTOM_SECTOR_MAP: return CUSTOM_SECTOR_MAP[stock_name]
+    t = str(row['테마'])
     keywords = {
         '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '메모리', 'NPU', '유리기판'],
-        '2차전지': ['2차전지', '리튬', '전고체', '배터리', 'LFP', '양극재'],
-        '바이오': ['바이오', '제약', '신약', '임상'],
+        '2차전지': ['2차전지', '리튬', '전고체', '배터리', '양극재'],
+        '바이오': ['바이오', '제약', '신약', '의료기기', '임상'],
         '로봇/AI': ['로봇', 'AI', '인공지능', '챗봇'],
         '전력/원전': ['전력', '전선', '원자력', '변압기'],
-        '방산/우주': ['방산', '우주', '항공'],
-        '금융/지주': ['지주사', '은행', '보험', '증권', '밸류업']
+        '방산/우주': ['방산', '우주', '항공', '조선'],
+        '금융/지주': ['지주사', '은행', '보험', '밸류업']
     }
     for sector, keys in keywords.items():
         if any(k in t for k in keys): return sector
@@ -255,7 +268,7 @@ def format_volume_to_jo_eok(x_million):
         return f"{eok // 10000}조 {eok % 10000}억" if eok >= 10000 else f"{eok}억"
     except: return str(x_million)
 
-# --- [3] UI 레이아웃 구성 ---
+# --- [3] UI 레이아웃 ---
 
 # 1. 사이드바
 with st.sidebar:
@@ -276,14 +289,14 @@ with st.sidebar:
     
     st.info(f"📍 **전문가 브리핑:**\n{st.session_state.global_briefing}")
 
-# 2. 메인 화면 상단 타이틀 & 리프레시 버튼
+# 2. 메인 화면 상단
 col_title, col_btn = st.columns([7, 3])
 with col_title: st.title("🔑 Golden Key Pro")
 with col_btn:
     st.write(""); st.write("")
     if st.button("🔄 테마 DB 최신화", use_container_width=True): update_theme_db()
 
-tab_scanner, tab_analysis = st.tabs(["🚀 실시간 주도주 스캐너", "📊 종목 정밀 분석"])
+tab_scanner, _ = st.tabs(["🚀 실시간 주도주 스캐너", "📊 종목 정밀 분석"])
 
 with tab_scanner:
     col_main, col_summary = st.columns([7, 3])
@@ -294,8 +307,7 @@ with tab_scanner:
                 df_k = fetch_market_data(0, '코스피'); df_q = fetch_market_data(1, '코스닥')
                 df = pd.concat([df_k, df_q], ignore_index=True)
                 if not df.empty:
-                    black_list = ['KODEX', 'TIGER', 'KBSTAR', 'ACE', 'SOL', '스팩', 'ETN']
-                    df = df[~df['종목명'].str.contains('|'.join(black_list), na=False)]
+                    df = df[~df['종목명'].str.contains('KODEX|TIGER|KBSTAR|스팩', na=False)]
                     df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace('%|\+', '', regex=True), errors='coerce')
                     df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
                     df = df.sort_values(by='거래대금_num', ascending=False).head(100)
@@ -305,31 +317,25 @@ with tab_scanner:
                         df['테마'] = df['종목명'].map(dict(zip(theme_df['종목명'], theme_df['테마']))).fillna('-')
                     else: df['테마'] = '-'
                     df['섹터'] = df.apply(apply_mega_sector, axis=1)
-                    # 🌟 결과를 세션 상태에 저장 🌟
                     st.session_state.domestic_df = df
 
-        # 🌟 세션 상태에 저장된 데이터가 있다면 화면에 출력 🌟
         if not st.session_state.domestic_df.empty:
             df = st.session_state.domestic_df
             st.subheader(f"🔥 실시간 주도주 ({len(df)}개)")
             for _, row in df.iterrows():
                 bg = SECTOR_COLORS.get(row['섹터'], '#ffffff')
-                m_c = "market-kospi" if row['시장'] == '코스피' else "market-kosdaq"
                 rv = row['등락률_num']
                 rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1f2937")
-
                 st.markdown(f"""
                     <div class="stock-card">
                         <div class="left-zone">
-                            <span class="market-tag {m_c}">{row['시장']}</span>
+                            <span class="market-tag {"market-kospi" if row['시장']=='코스피' else "market-kosdaq"}">{row['시장']}</span>
                             <span class="stock-name">{row['종목명']}</span>
                         </div>
-                        <div class="center-zone">
-                            <span class="sector-badge" style="background: {bg}; color: #1e293b;">{row['섹터']}</span>
-                        </div>
+                        <div class="center-zone"><span class="sector-badge" style="background: {bg}; color: #1e293b;">{row['섹터']}</span></div>
                         <div class="right-zone">
                             <span style="color: {rt_c}; font-weight: 800; font-size: 1.1rem; min-width: 65px; text-align: right;">+{rv}%</span>
-                            <span class="stock-vol" style="font-size: 0.9rem; color: #64748b; font-weight: 500; min-width: 90px; text-align: right;">{format_volume_to_jo_eok(row['거래대금_num'])}</span>
+                            <span class="stock-vol" style="font-size: 0.9rem; color: #64748b; min-width: 90px; text-align: right;">{format_volume_to_jo_eok(row['거래대금_num'])}</span>
                         </div>
                     </div>
                 """, unsafe_allow_html=True)
@@ -339,28 +345,14 @@ with tab_scanner:
         if not st.session_state.domestic_df.empty:
             df = st.session_state.domestic_df
             sector_group = df[df['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
-            if not sector_group.empty:
-                for idx_s, (s_name, count) in enumerate(sector_group.items()):
-                    target_c = SECTOR_COLORS.get(s_name, '#ffffff')
-                    st.markdown(f'<style>div[data-testid="column"]:nth-of-type(2) div[data-testid="stExpander"]:nth-of-type({idx_s+1}) summary {{ background-color: {target_c} !important; color: #1e293b !important; }}</style>', unsafe_allow_html=True)
-                    with st.expander(f"{s_name} ({count})", expanded=True):
-                        s_stocks = df[df['섹터'] == s_name].sort_values('등락률_num', ascending=False)
-                        for i, (idx, s_row) in enumerate(s_stocks.iterrows()):
-                            ldr = '<span class="leader-label">대장</span>' if i == 0 else ''
-                            s_rv = s_row['등락률_num']
-                            s_rt_c = "#ef4444" if s_rv >= 20.0 else ("#22c55e" if s_rv >= 10.0 else "#334155")
-                            st.markdown(f"""
-                            <div class="sector-item">
-                                <div class="sector-item-left">
-                                    {ldr}<span class="sector-stock-name">{s_row['종목명']}</span>
-                                </div>
-                                <div class="sector-item-right">
-                                    <span class="val-rate" style="color:{s_rt_c};">+{s_rv}%</span>
-                                    <span class="val-vol">{format_volume_to_jo_eok(s_row['거래대금_num'])}</span>
-                                </div>
-                            </div>
-                            """, unsafe_allow_html=True)
-        else:
-            st.info("국내 실시간 스캔을 실행하세요.")
-
-with tab_analysis: st.info("📊 상세 분석 기능 준비 중")
+            for idx_s, (s_name, count) in enumerate(sector_group.items()):
+                target_c = SECTOR_COLORS.get(s_name, '#ffffff')
+                st.markdown(f'<style>div[data-testid="column"]:nth-of-type(2) div[data-testid="stExpander"]:nth-of-type({idx_s+1}) summary {{ background-color: {target_c} !important; color: #1e293b !important; }}</style>', unsafe_allow_html=True)
+                with st.expander(f"{s_name} ({count})", expanded=True):
+                    s_stocks = df[df['섹터'] == s_name].sort_values('등락률_num', ascending=False)
+                    for i, (idx, s_row) in enumerate(s_stocks.iterrows()):
+                        ldr = '<span class="leader-label">대장</span>' if i == 0 else ''
+                        s_rv = s_row['등락률_num']
+                        s_rt_c = "#ef4444" if s_rv >= 20.0 else ("#22c55e" if s_rv >= 10.0 else "#334155")
+                        st.markdown(f'<div class="sector-item"><div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div><div class="sector-item-right"><span class="val-rate" style="color:{s_rt_c};">+{s_rv}%</span><span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
+        else: st.info("국내 실시간 스캔을 실행하세요.")
