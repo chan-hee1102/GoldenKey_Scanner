@@ -8,6 +8,7 @@ import os
 import re
 import json
 import google.generativeai as genai
+import random
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -15,16 +16,18 @@ st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보�
 THEME_DB_FILE = "theme_db.csv"
 
 # ==========================================
-# 🛡️ [Security] Gemini API 키 및 최신 2.5 모델 설정
+# 🛡️ [Security] Gemini API 키 및 모델 엔진 설정 (오류 수정 핵심)
 # ==========================================
 if "GEMINI_API_KEY" in st.secrets:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
+    # 💡 404 오류 영구 해결: 구글 정책 변경에 따라 최신 모델인 gemini-2.5-flash 로 지정합니다.
     try:
         model = genai.GenerativeModel(model_name='gemini-2.5-flash')
     except:
         model = None
 else:
+    # 키가 없을 경우를 대비한 대체 처리 (UI에서 경고 노출용)
     GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
     model = None
 
@@ -207,15 +210,17 @@ SECTOR_COLORS = {
 
 CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
 
-# --- [2] 미 증시 엔진: 네이버 금융 통합 로직 ---
+# --- [2] 미 증시 엔진: 네이버 금융 통합 및 듀얼 크롤링 로직 (안정성 확보) ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_sox_stable():
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    """필라델피아 반도체 지수 전용: 네이버 금융 해외지수 페이지 크롤링"""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    url = "https://finance.naver.com/world/"
     try:
-        res = requests.get("https://finance.naver.com/world/", headers=headers, timeout=10)
+        res = requests.get(url, headers=headers, timeout=10)
         res.encoding = 'euc-kr'
         soup = BeautifulSoup(res.text, 'html.parser')
         table = soup.find('table', {'class': 'tbl_exchange'})
@@ -227,7 +232,8 @@ def fetch_sox_stable():
     except: return None, None
 
 def fetch_robust_finance(ticker):
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    """지수 0% 오류 해결을 위해 야후/구글 교차 체크 및 JSON 추출 로직"""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
         url = f"https://finance.yahoo.com/quote/{ticker}"
         res = requests.get(url, headers=headers, timeout=12)
@@ -251,6 +257,7 @@ def fetch_robust_finance(ticker):
     return "N/A", "0.00%"
 
 def get_global_market_status():
+    """🌟 3대 지수 및 전력/원전 확장 ETF 통합 분석 🌟"""
     indices = []
     themes = []
     idx_map = {"나스닥 100": "^NDX", "S&P 500": "^GSPC", "다우존스": "^DJI"}
@@ -261,6 +268,7 @@ def get_global_market_status():
             indices.append({"name": name, "value": v, "delta": r})
             time.sleep(0.2)
         
+        # 필라 반도체는 네이버 경로 우선
         sox_v, sox_r = fetch_sox_stable()
         if not sox_v: sox_v, sox_r = fetch_robust_finance("^SOX")
         indices.append({"name": "필라 반도체", "value": sox_v, "delta": sox_r})
@@ -309,12 +317,16 @@ def update_theme_db():
         status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
 
-# --- [4] 💡 종목 정밀 분석 엔진 (Top 10 기사 다중 수집 방식) ---
+# --- [4] 💡 종목 정밀 분석 엔진 (안전 크롤링 + 관련도 10개 뉴스 다중 수집) ---
 
 def fetch_stock_news_headlines(stock_name):
-    """전문가님 설계 반영: '관련도순' 상위 10개 기사 제목을 모두 크롤링합니다."""
+    """
+    네이버 차단 방지를 위해 파라미터를 정밀화하고,
+    Gemini가 엉뚱한 뉴스(카카오 등)를 걸러낼 수 있도록 '관련도순' 상위 최대 10개 기사 제목을 긁어옵니다.
+    """
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8'
     }
     
@@ -322,48 +334,50 @@ def fetch_stock_news_headlines(stock_name):
     params = {
         'where': 'news',
         'query': f'특징주 {stock_name}',
-        'sort': '0' # 0: 관련도순 (정확도 높은 기사 최상단)
+        'sort': '0' # 💡 0은 '관련도순' 입니다. (정확한 재료 파악을 위해 변경)
     }
     
     try:
-        res = requests.get(url, params=params, headers=headers, timeout=8)
+        res = requests.get(url, params=params, headers=headers, timeout=10)
         soup = BeautifulSoup(res.text, 'html.parser')
         
-        # 기사 제목들만 모두 추출
         title_tags = soup.select(".news_tit")
-        
         titles = []
-        for tag in title_tags[:10]: # 최대 10개 추출
+        
+        # 상위 10개의 기사 제목만 리스트로 담기
+        for tag in title_tags[:10]:
             titles.append(tag.text.strip())
             
         if not titles:
-            return ["검색된 뉴스 없음"]
+            return ["최근 특징주 검색 결과 없음"]
             
         return titles
-        
     except Exception as e:
-        return ["뉴스 수집 실패"]
+        return ["뉴스 서버 접근 실패 (차단 의심)"]
 
 def perform_batch_analysis(news_map):
+    """Gemini 2.5 Flash를 이용한 배치 분석 및 설계 포맷팅"""
     if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
-        return ["⚠️ Gemini API 키를 설정해 주세요."]
+        return ["⚠️ Gemini API 키를 코드 상단에 입력해 주세요."]
     
     try:
         analysis_model = genai.GenerativeModel('gemini-2.5-flash')
+        
+        # 프롬프트 업데이트: 10개 기사를 모두 보고 타겟 종목의 진짜 이유만 찾아내도록 지시
         prompt = f"""
-        당신은 한국 주식 퀀트 분석 전문가입니다.
+        당신은 한국 주식 퀀트 분석 전문가입니다. 
         아래 데이터는 실시간 주도주들에 대해 네이버 뉴스(관련도순) 제목을 종목당 최대 10개씩 크롤링한 결과입니다.
         
-        [입력 데이터]
+        [데이터]
         {json.dumps(news_map, ensure_ascii=False)}
         
-        [분석 및 출력 규칙]
-        1. 각 종목당 제공된 뉴스 제목 리스트를 모두 읽고 종합하여, 해당 종목이 '현재 시장에서 상승한 진짜 핵심 이유(재료)'를 파악하세요.
-        2. 타 종목 기사나 검색어 혼선으로 섞여 들어온 노이즈 기사(예: 삼성전자를 검색했는데 카카오가 메인인 기사)는 무시하고, 오직 타겟 종목의 재료만 추출하세요.
-        3. 각 종목을 아래 형식으로 정확히 한 줄씩 출력하세요:
+        [출력 양식 및 분석 규칙]
+        1. 각 종목당 제공된 여러 개의 뉴스 제목을 모두 읽고, 해당 종목이 상승한 '진짜 핵심 재료'를 파악하세요.
+        2. 검색어 혼선으로 섞여 들어온 엉뚱한 타 종목 기사(예: 삼성전자 기사에 섞인 카카오 기사 등)는 완벽히 무시하세요.
+        3. 각 종목을 아래 형식으로 한 줄씩 출력하세요:
         • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} (최근 특징주)
         4. 섹터는 '반도체', '2차전지', '바이오', '로봇/AI', '전력/원전', '방산/우주항공', '금융/지주', '개별주' 중 하나를 선택하세요.
-        5. 10개의 기사를 다 읽어도 해당 종목에 대한 명확한 재료가 없다면 이유에 "최근 주요 재료 파악 불가" 라고 적어주세요.
+        5. 여러 기사를 다 읽어도 해당 종목에 대한 뚜렷한 재료가 없다면 이유 부분에 "최근 주요 재료 발견 안 됨" 이라고 적어주세요.
         """
         response = analysis_model.generate_content(prompt)
         return response.text.strip().split("\n")
@@ -402,7 +416,7 @@ def format_volume_to_jo_eok(x_million):
         return f"{eok // 10000}조 {eok % 10000}억" if eok >= 10000 else f"{eok}억"
     except: return str(x_million)
 
-# --- [6] UI 레이아웃 구성 ---
+# --- [6] UI 레이아웃 구성 (무삭제 마스터) ---
 
 with st.sidebar:
     st.title("🌐 글로벌 증시")
@@ -464,33 +478,33 @@ with tab_scanner:
                             ldr = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
                             st.markdown(f'<div class="sector-item"><div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div><div class="sector-item-right"><span class="val-rate" style="color:{"#ef4444" if s_row["등락률_num"]>=20 else "#334155"};">+{s_row["등락률_num"]}%</span><span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
 
-# 📊 [정밀 분석 탭]
 with tab_analysis:
     st.subheader("🔍 뉴스 기반 테마 정밀 분석 (Gemini LLM)")
     if st.session_state.domestic_df.empty:
         st.info("실시간 주도주 스캔을 먼저 실행하세요.")
     else:
         if st.button("🔎 뉴스 크롤링 및 Gemini 정밀 분석 시작", use_container_width=True):
-            # 💡 시간 소요를 사용자에게 미리 안내
-            with st.spinner("관련도순 상위 10개 기사를 모두 긁어와 정밀 분석 중입니다... (약 15초 소요)"):
+            # 💡 봇 차단 방지를 위해 소요 시간을 넉넉히 안내합니다.
+            with st.spinner("안전한 뉴스 수집 및 정밀 분석을 위해 약 1~2분 정도 소요됩니다. 잠시만 대기해 주세요..."):
                 news_payload = {}
                 progress_bar = st.progress(0)
                 stocks = st.session_state.domestic_df['종목명'].tolist()
                 for i, name in enumerate(stocks):
                     news_payload[name] = fetch_stock_news_headlines(name)
                     progress_bar.progress((i + 1) / len(stocks))
-                    time.sleep(0.1) # 10개 수집 딜레이 (조금 단축)
+                    
+                    # 💡 핵심 방어 로직: 40개 종목 연속 검색 시 네이버 IP 차단을 막기 위해 무조건 2초씩 대기합니다.
+                    time.sleep(2.0) 
                 
                 st.session_state.analysis_results = perform_batch_analysis(news_payload)
-                st.success("✅ 심층 정밀 분석 완료!")
+                st.success("✅ 정밀 분석 완료!")
 
         if st.session_state.analysis_results:
             st.markdown('<div class="analysis-list-container">', unsafe_allow_html=True)
             for row in st.session_state.analysis_results:
-                if row.strip() and "•" in row:
+                if row.strip():
                     styled_row = row.replace("[", '<span class="analysis-stock-hl">[').replace("]", "]</span>")
                     styled_row = styled_row.replace("섹터:", '<span class="analysis-sector-hl">섹터:').replace(" - 이유:", "</span> - 이유:")
-                    # 날짜 형식 정규식 수정 (최근 특징주 강조)
                     styled_row = re.sub(r'(\(.*?특징주\))', r'<span class="analysis-date-hl">\1</span>', styled_row)
                     
                     st.markdown(f'<div class="analysis-row">{styled_row}</div>', unsafe_allow_html=True)
