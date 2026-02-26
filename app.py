@@ -316,22 +316,69 @@ def update_theme_db():
         status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
 
-# --- [4] 종목 정밀 분석 엔진: 뉴스 크롤링 & Gemini 배치 분석 (설계 추가) ---
+# --- [4] 💡 종목 정밀 분석 엔진 (강력한 스마트 크롤링 탑재) ---
 
 def fetch_stock_news_headline(stock_name):
-    """'특징주 [종목명]' 키워드로 최신순 검색하여 핵심 제목 추출"""
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    url = f"https://search.naver.com/search.naver?where=news&query=특징주+{stock_name}&sort=1"
+    """
+    '특징주 [종목명]' 검색 시 카카오 등 엉뚱한 뉴스가 잡히는 현상을 막기 위해
+    기사 제목에 종목명이 정확히 포함된 기사만 필터링해서 가져옵니다.
+    """
+    # 1. 봇 차단 방지를 위한 강력한 브라우저 위장
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8'
+    }
+    
+    # 2. 한글 검색어 깨짐 방지를 위해 params 인자 사용
+    url = "https://search.naver.com/search.naver"
+    params = {
+        'where': 'news',
+        'query': f'특징주 {stock_name}',
+        'sort': '1'
+    }
+    
     try:
-        res = requests.get(url, headers=headers, timeout=8)
+        res = requests.get(url, params=params, headers=headers, timeout=8)
         soup = BeautifulSoup(res.text, 'html.parser')
-        area = soup.select_one(".news_area")
-        if area:
-            title = area.select_one(".news_tit").text
-            date_info = area.select_one(".info_group").text.strip().split(" ")[0]
-            return {"title": title, "date": date_info}
-        return {"title": "최근 1개월 내 특징주 뉴스 없음", "date": "-"}
-    except: return {"title": "뉴스 수집 실패", "date": "-"}
+        areas = soup.select(".news_area")
+        
+        if not areas:
+            return {"title": "최근 1개월 내 특징주 뉴스 없음", "date": "-"}
+            
+        # 3. 오탐지 필터링: 뉴스 덩어리들을 뒤져서 기사 '제목'에 종목명이 있는 것만 찾기
+        for area in areas:
+            title_tag = area.select_one(".news_tit")
+            if not title_tag: continue
+            
+            title = title_tag.text
+            
+            # 제목에 종목명이 포함된 경우에만 해당 뉴스 수집 (카카오 뉴스 등 제외 목적)
+            if stock_name in title:
+                info_group = area.select_one(".info_group")
+                date_info = "-"
+                if info_group:
+                    spans = info_group.select("span.info")
+                    if spans:
+                        date_info = spans[-1].text.strip()
+                return {"title": title, "date": date_info}
+        
+        # 만약 제목에 종목명이 정확히 들어간 기사가 없다면 (예: '삼전' 등 약칭 기사만 있는 경우)
+        # 어쩔 수 없이 맨 위에 검색된 첫 번째 기사를 가져옵니다.
+        first_area = areas[0]
+        title_tag = first_area.select_one(".news_tit")
+        title = title_tag.text if title_tag else "제목 없음"
+        
+        info_group = first_area.select_one(".info_group")
+        date_info = "-"
+        if info_group:
+            spans = info_group.select("span.info")
+            if spans:
+                date_info = spans[-1].text.strip()
+                
+        return {"title": title, "date": date_info}
+        
+    except Exception as e:
+        return {"title": "뉴스 수집 실패", "date": "-"}
 
 def perform_batch_analysis(news_map):
     """Gemini 2.5 Flash를 이용한 배치 분석 및 설계 포맷팅"""
@@ -339,9 +386,7 @@ def perform_batch_analysis(news_map):
         return ["⚠️ Gemini API 키를 코드 상단에 입력해 주세요."]
     
     try:
-        # 💡 핵심: 여기서도 동일하게 최신 2.5 모델을 호출해야 합니다.
         analysis_model = genai.GenerativeModel('gemini-2.5-flash')
-        # 10개 단위로 끊어서 요청 (정확도 확보)
         prompt = f"""
         당신은 한국 주식 전문가입니다. 아래 종목들의 최근 뉴스 제목을 분석하여 재료의 본질을 파악하세요.
         
@@ -353,6 +398,7 @@ def perform_batch_analysis(news_map):
         • [종목명] - 섹터: {{핵심섹터}} - 이유: {{상승이유 20자 이내 요약}} ({{뉴스날짜}} 특징주)
         
         섹터는 '반도체', '2차전지', '바이오', '로봇/AI', '전력/원전', '방산/우주항공', '금융/지주', '개별주' 중 하나를 선택하세요.
+        뉴스가 없거나 수집에 실패했다면 이유 부분에 "최근 주요 재료 발견 안 됨" 이라고 적어주세요.
         """
         response = analysis_model.generate_content(prompt)
         return response.text.strip().split("\n")
@@ -466,7 +512,7 @@ with tab_analysis:
         st.info("실시간 주도주 스캔을 먼저 실행하세요.")
     else:
         if st.button("🔎 뉴스 크롤링 및 Gemini 정밀 분석 시작", use_container_width=True):
-            with st.spinner("특징주 뉴스를 검색하고 Gemini와 함께 맥락을 분석 중입니다..."):
+            with st.spinner("특징주 뉴스를 검색하고 Gemini와 함께 맥락을 분석 중입니다... (약 15초 소요)"):
                 news_payload = {}
                 progress_bar = st.progress(0)
                 stocks = st.session_state.domestic_df['종목명'].tolist()
