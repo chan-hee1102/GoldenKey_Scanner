@@ -21,6 +21,7 @@ THEME_DB_FILE = "theme_db.csv"
 if "GEMINI_API_KEY" in st.secrets:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel('gemini-1.5-flash')
 else:
     # 키가 없을 경우를 대비한 대체 처리 (UI에서 경고 노출용)
     GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
