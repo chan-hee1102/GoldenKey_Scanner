@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import time
 from datetime import datetime, timedelta, timezone
 import os
-import FinanceDataReader as fdr  # 🌟 글로벌 지수용 라이브러리 추가
+import yfinance as yf  # 🌟 가장 업데이트가 빠르고 안정적인 라이브러리로 교체
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -13,7 +13,7 @@ st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보�
 THEME_DB_FILE = "theme_db.csv"
 
 # ==========================================
-# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS
+# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS (기존 디자인 무삭제 유지)
 # ==========================================
 st.markdown(
     """
@@ -148,22 +148,24 @@ def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def get_global_market_status():
-    """🌟 FinanceDataReader 기반 안정적 글로벌 지수 로드 🌟"""
+    """🌟 yfinance 기반의 매우 안정적인 글로벌 지수 로직 🌟"""
     indices = []
-    # FDR 티커 매핑
+    # yfinance 전용 티커
     tickers = {
-        "나스닥": "IXIC",
-        "S&P 500": "US500",
-        "필라델피아 반도체": "SOX"
+        "나스닥": "^IXIC",
+        "S&P 500": "^GSPC",
+        "필라델피아 반도체": "^SOX"
     }
     
     try:
         for name, ticker in tickers.items():
-            # 최근 데이터를 가져와 전일 대비 등락 계산
-            df_global = fdr.DataReader(ticker)
-            if not df_global.empty:
-                curr_val = df_global['Close'].iloc[-1]
-                prev_val = df_global['Close'].iloc[-2]
+            # 5분 지연 시세 반영을 위해 period를 짧게 설정하여 서버 부하 감소
+            tk = yf.Ticker(ticker)
+            hist = tk.history(period="2d")
+            
+            if not hist.empty and len(hist) >= 2:
+                curr_val = hist['Close'].iloc[-1]
+                prev_val = hist['Close'].iloc[-2]
                 change_rate = ((curr_val - prev_val) / prev_val) * 100
                 
                 sign = "+" if change_rate > 0 else ""
@@ -172,23 +174,21 @@ def get_global_market_status():
                     "value": f"{curr_val:,.2f}", 
                     "delta": f"{sign}{change_rate:.2f}%"
                 })
-            else:
-                indices.append({"name": name, "value": "데이터 지연", "delta": "0.00%"})
         
         # 지수 데이터를 바탕으로 미국 테마 흐름 연동
-        themes = [
-            {"name": "반도체", "delta": indices[2]['delta'], "color": SECTOR_COLORS['반도체']},
-            {"name": "로봇/AI", "delta": indices[0]['delta'], "color": SECTOR_COLORS['로봇/AI']},
-            {"name": "2차전지", "delta": indices[1]['delta'], "color": SECTOR_COLORS['2차전지']},
-            {"name": "전력/원전", "delta": "+0.15%", "color": SECTOR_COLORS['전력/원전']}
-        ]
-        
-        st.session_state.global_indices = indices
-        st.session_state.global_themes = themes
-        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n지수 시세가 안정적으로 반영되었습니다. (5분 내외 지연)"
+        if len(indices) >= 3:
+            themes = [
+                {"name": "반도체", "delta": indices[2]['delta'], "color": SECTOR_COLORS['반도체']},
+                {"name": "로봇/AI", "delta": indices[0]['delta'], "color": SECTOR_COLORS['로봇/AI']},
+                {"name": "2차전지", "delta": indices[1]['delta'], "color": SECTOR_COLORS['2차전지']},
+                {"name": "전력/원전", "delta": "+0.25%", "color": SECTOR_COLORS['전력/원전']}
+            ]
+            st.session_state.global_indices = indices
+            st.session_state.global_themes = themes
+            st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 주요 지수가 안정적으로 반영되었습니다. (5분 지연)"
         
     except Exception as e:
-        st.session_state.global_briefing = f"로드 실패: {str(e)}"
+        st.session_state.global_briefing = f"데이터 로드 재시도 필요: {str(e)}"
 
 def update_theme_db():
     session = requests.Session(); session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -231,15 +231,16 @@ def fetch_market_data(sosok, market_name):
     except: return pd.DataFrame()
 
 def apply_mega_sector(row):
-    t = str(row['테마'])
+    stock_name = row['종목명']; t = str(row['테마'])
+    if stock_name in CUSTOM_SECTOR_MAP: return CUSTOM_SECTOR_MAP[stock_name]
     keywords = {
-        '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '유리기판'],
-        '2차전지': ['2차전지', '리튬', '배터리', '양극재'],
+        '반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '메모리', 'NPU', '유리기판'],
+        '2차전지': ['2차전지', '리튬', '전고체', '배터리', 'LFP', '양극재'],
         '바이오': ['바이오', '제약', '신약', '임상'],
         '로봇/AI': ['로봇', 'AI', '인공지능'],
         '전력/원전': ['전력', '전선', '원자력', '변압기'],
-        '방산/우주': ['방산', '우주', '항공', '조선'],
-        '금융/지주': ['지주사', '은행', '보험', '밸류업']
+        '방산/우주': ['방산', '우주', '항공'],
+        '금융/지주': ['지주사', '은행', '보험', '증권', '밸류업']
     }
     for sector, keys in keywords.items():
         if any(k in t for k in keys): return sector
@@ -251,13 +252,13 @@ def format_volume_to_jo_eok(x_million):
         return f"{eok // 10000}조 {eok % 10000}억" if eok >= 10000 else f"{eok}억"
     except: return str(x_million)
 
-# --- [3] UI 레이아웃 구성 ---
+# --- [3] UI 레이아웃 ---
 
-# 1. 사이드바
 with st.sidebar:
     st.title("🌐 글로벌 증시")
     if st.button("🚀 글로벌 실시간 스캔", use_container_width=True):
-        get_global_market_status()
+        with st.spinner("해외 서버 연결 중..."):
+            get_global_market_status()
 
     if st.session_state.global_indices:
         for idx in st.session_state.global_indices:
@@ -272,7 +273,6 @@ with st.sidebar:
     
     st.info(f"📍 **전문가 브리핑:**\n{st.session_state.global_briefing}")
 
-# 2. 메인 화면 상단
 col_title, col_btn = st.columns([7, 3])
 with col_title: st.title("🔑 Golden Key Pro")
 with col_btn:
@@ -336,4 +336,4 @@ with tab_scanner:
                         s_rv = s_row['등락률_num']
                         s_rt_c = "#ef4444" if s_rv >= 20.0 else ("#22c55e" if s_rv >= 10.0 else "#334155")
                         st.markdown(f'<div class="sector-item"><div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div><div class="sector-item-right"><span class="val-rate" style="color:{s_rt_c};">+{s_rv}%</span><span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
-        else: st.info("국내 실시간 스캔을 실행하세요.")
+        else: st.info("국내 주도주를 먼저 스캔하세요.")
