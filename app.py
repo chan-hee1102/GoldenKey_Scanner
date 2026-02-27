@@ -401,7 +401,7 @@ def perform_batch_analysis(news_map):
 
 def fetch_market_data(sosok, market_name):
     # 💡 완벽 수정: URL 양끝에 어떤 따옴표(')나 마크다운 찌꺼기도 들어가지 않은 순수 문자열입니다.
-    url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
+    url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=0](https://finance.naver.com/sise/sise_quant.naver?sosok=1){sosok}"
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
