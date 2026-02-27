@@ -203,15 +203,13 @@ SECTOR_COLORS = {
 }
 
 def get_sector_color(sector_name):
-    # 등록된 색상이 없으면 옅은 회색 계열 반환
     return SECTOR_COLORS.get(sector_name, '#f8fafc')
 
-# 💡 핵심 방어 코드: 단어가 글자 단위로 쪼개지는 현상 원천 차단
+# 💡 글자 쪼개짐 원천 차단 로직
 def force_list(val):
     if isinstance(val, str):
         return [val]
     if isinstance(val, list):
-        # 만약 ['자', '동', '차'] 처럼 한 글자씩 쪼개져 있다면 강제로 하나로 합침
         if len(val) > 1 and all(len(str(x)) == 1 for x in val):
             return ["".join(str(x) for x in val)]
         return [str(x) for x in val]
@@ -296,32 +294,49 @@ def get_global_market_status():
 # --- [3] 💡 종목 정밀 분석 엔진 (Gemini) ---
 
 def fetch_stock_news_headlines(stock_name):
+    # 클라우드 IP 차단을 피하기 위한 현실적인 이중 크롤링 전략
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Referer': "https://search.naver.com/"
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Referer': "https://finance.naver.com/"
     }
     titles = []
     
-    # 💡 빠르고 안전하게 1회 요청 (관련도순 10개만)
+    # 1. 메인 타겟: 네이버 금융 뉴스 (클라우드 IP 차단 확률이 낮음)
     try:
-        gen_url = "https://search.naver.com/search.naver"
-        params_rel = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'}
-        res_rel = requests.get(gen_url, params=params_rel, headers=headers, timeout=5)
-        if res_rel.status_code == 200:
-            soup_rel = BeautifulSoup(res_rel.text, 'html.parser')
-            for tag in soup_rel.select(".news_tit")[:10]:
-                titles.append(tag.text.strip())
-    except: pass
+        encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
+        fin_url = f"https://finance.naver.com/news/news_search.naver?q={encoded_kw}"
+        res_fin = requests.get(fin_url, headers=headers, timeout=5)
+        res_fin.encoding = 'euc-kr' 
+        
+        if res_fin.status_code == 200:
+            soup_fin = BeautifulSoup(res_fin.text, 'html.parser')
+            tags = soup_fin.select(".articleSubject a") or soup_fin.select(".tit") or soup_fin.select("dt a")
+            for tag in tags:
+                text = tag.text.strip()
+                if text and text not in titles:
+                    titles.append(text)
+    except: pass 
+
+    # 2. 보조 타겟: 다음(Daum) 뉴스 우회 (네이버 금융 서버가 막혔을 때의 보험)
+    if len(titles) < 3:
+        try:
+            daum_url = f"https://search.daum.net/search?w=news&q={quote('특징주 ' + stock_name)}"
+            headers['Referer'] = "https://search.daum.net/"
+            res_daum = requests.get(daum_url, headers=headers, timeout=5)
+            if res_daum.status_code == 200:
+                soup_daum = BeautifulSoup(res_daum.text, 'html.parser')
+                for tag in soup_daum.select('.c-tit-doc, .tit_main, a.f_link_b'):
+                    text = tag.text.strip()
+                    if text and text not in titles:
+                        titles.append(text)
+        except: pass
 
     if not titles:
-        return ["[에러] 뉴스 검색 실패 또는 검색어 차단됨"]
+        return ["[에러] 뉴스 검색 실패 또는 포털 서버 접근 차단됨"]
         
-    unique_titles = []
-    for t in titles:
-        if t not in unique_titles: unique_titles.append(t)
-            
-    return unique_titles[:10]
+    return titles[:10]
 
 def perform_batch_analysis(news_map):
     if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
@@ -329,10 +344,9 @@ def perform_batch_analysis(news_map):
     
     try:
         analysis_model = genai.GenerativeModel('gemini-2.5-flash')
-        # 💡 강력한 탑티어 트레이더 페르소나 및 엄격한 규칙 부여
         prompt = f"""
         당신은 여의도 탑티어 프랍 트레이더이자 주식 단기 주도주 분석 전문가입니다.
-        아래 데이터는 오늘 시장에서 강한 수급이 들어온 실시간 주도주들의 최신 네이버 뉴스 헤드라인 모음(종목당 최대 10개)입니다.
+        아래 데이터는 오늘 시장에서 강한 수급이 들어온 실시간 주도주들의 최신 뉴스 헤드라인 모음(종목당 최대 10개)입니다.
         
         [데이터]
         {json.dumps(news_map, ensure_ascii=False)}
@@ -340,17 +354,17 @@ def perform_batch_analysis(news_map):
         [전문가 분석 규칙]
         1. 제공된 뉴스를 심층 분석하여 각 종목이 상승한 '진짜 핵심 재료'를 파악하세요.
         2. '섹터'는 해당 재료를 대표하는 테마 키워드로 작성하되, 아래 원칙을 엄격히 지키세요:
-           - [테마 병합]: '2차전지'와 '2차전지/ESS'처럼 유사하거나 겹치는 테마는 가장 대표적이고 포괄적인 단어 하나(예: '2차전지')로 확실하게 합치세요.
+           - [테마 병합]: '2차전지'와 '2차전지/ESS'처럼 의미가 겹치거나 파생된 테마는 가장 포괄적이고 대표적인 단어 하나(예: '2차전지')로 확실하게 합치세요.
            - [그룹주 모멘텀]: 삼성, 현대차, 한화 등 특정 대기업 그룹사들의 뉴스가 엮여서 동반 상승하는 흐름이라면, 기존 섹터(예: '자동차') 외에 '현대차그룹' 같은 그룹사 테마명도 섹터 배열에 추가하세요.
-           - [팩트 기반 추출]: 뉴스를 기반으로 확실한 모멘텀만 추출하고, 쓸데없이 말도 안 되는 재료를 억지로 엮어 테마를 늘리지 마세요. 뉴스가 모호하면 "개별주"로 처리하세요.
+           - [팩트 기반 추출]: 뉴스를 기반으로 확실한 모멘텀만 추출하고, 쓸데없이 말도 안 되는 재료를 억지로 엮지 마세요. 뉴스가 모호하거나 상승 이유를 찾기 힘들면 "개별주"로 처리하세요.
         3. 데이터에 뉴스가 없거나 파악이 불가능하면 "섹터": ["개별주"], "이유": "최근 뚜렷한 재료 발견 안됨" 으로 작성하세요.
         4. 반드시 아래 예시와 같은 순수 JSON 배열(Array) 형식으로만 응답하세요. (백틱이나 부가 설명 절대 금지)
-           ★ 주의: "섹터" 값은 반드시 ["자동차", "로봇"] 처럼 완성된 단어의 배열로 반환하세요. 절대 하나의 문자열이나 글자 단위로 쪼개서 반환하지 마세요.
+           ★ 주의: "섹터" 값은 반드시 ["자동차", "로봇"] 처럼 완성된 단어의 배열로 반환하세요.
         
         [예시]
         [
           {{"종목명": "현대차", "섹터": ["자동차", "현대차그룹", "로봇"], "이유": "새만금 9조 통큰 투자 및 AI·로봇 거점 추진 기대감", "기사날짜": "최근 특징주"}},
-          {{"종목명": "카카오", "섹터": ["개별주"], "이유": "최근 주요 재료 발견 안 됨", "기사날짜": "-"}}
+          {{"종목명": "카카오", "섹터": ["개별주"], "이유": "최근 뚜렷한 재료 발견 안됨", "기사날짜": "-"}}
         ]
         """
         response = analysis_model.generate_content(prompt)
@@ -372,7 +386,7 @@ def fetch_market_data(sosok, market_name):
     referer_url = f"{protocol}://{host}/"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Referer': referer_url
     }
     try:
@@ -457,8 +471,8 @@ with tab_scanner:
                     for i, name in enumerate(stocks):
                         news_payload[name] = fetch_stock_news_headlines(name)
                         progress_bar.progress((i + 1) / len(stocks))
-                        # 💡 봇 차단 방지를 위한 약간의 랜덤 딜레이 적용
-                        time.sleep(random.uniform(1.0, 1.5)) 
+                        # 💡 봇 차단 방지를 위한 안전 딜레이 적용
+                        time.sleep(1.0) 
                     
                     st.session_state.news_payload = news_payload
                     
@@ -492,6 +506,7 @@ with tab_scanner:
                     bg = get_sector_color(sec)
                     badges_html += f'<span class="sector-badge" style="background: {bg}; color: #1e293b;">{sec}</span>'
                 
+                # 💡 10% 이상 초록색, 20% 이상 빨간색
                 rv = row['등락률_num']; rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1f2937")
                 
                 st.markdown(f'''
