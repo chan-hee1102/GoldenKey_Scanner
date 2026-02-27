@@ -30,7 +30,7 @@ else:
     model = None
 
 # ==========================================
-# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS 
+# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS
 # ==========================================
 st.markdown(
     """
@@ -45,7 +45,7 @@ st.markdown(
         background: #f1f5f9;
     }
 
-    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) 🌟 */
+    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) */
     [data-testid="stMetricValue"] {
         font-size: 1.25rem !important;
         font-weight: 800 !important;
@@ -56,7 +56,7 @@ st.markdown(
         margin-bottom: -5px !important;
     }
 
-    /* 🌟 실시간 주도주 리스트 디자인 (무삭제 유지) 🌟 */
+    /* 🌟 실시간 주도주 리스트 디자인 */
     .stock-card {
         background: white;
         border-radius: 8px;
@@ -95,7 +95,7 @@ st.markdown(
         white-space: nowrap;
     }
 
-    /* 🌟 우측 섹터 리스트 칼정렬 (일직선 정렬 로직) 🌟 */
+    /* 🌟 우측 섹터 리스트 칼정렬 */
     .sector-item {
         font-size: 0.85rem;
         color: #334155;
@@ -148,7 +148,7 @@ st.markdown(
         flex-shrink: 0;
     }
 
-    /* 🌟 정밀 분석 탭 전용 프리미엄 카드 스타일 🌟 */
+    /* 🌟 정밀 분석 탭 전용 프리미엄 카드 스타일 */
     .sector-group-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; margin-top: 25px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 2px solid #cbd5e1; }
     .analysis-card {
         background: #ffffff; border-radius: 10px; padding: 16px; margin-bottom: 12px;
@@ -251,13 +251,11 @@ def get_global_market_status():
     indices = []
     themes = []
     idx_map = {"나스닥 100": "^NDX", "S&P 500": "^GSPC", "다우존스": "^DJI"}
-    
     try:
         for name, tk in idx_map.items():
             v, r = fetch_robust_finance(tk)
             indices.append({"name": name, "value": v, "delta": r})
             time.sleep(0.2)
-        
         sox_v, sox_r = fetch_sox_stable()
         if not sox_v: sox_v, sox_r = fetch_robust_finance("^SOX")
         indices.append({"name": "필라 반도체", "value": sox_v, "delta": sox_r})
@@ -267,7 +265,6 @@ def get_global_market_status():
             _, r_etf = fetch_robust_finance(tk)
             themes.append({"name": name, "delta": r_etf, "color": SECTOR_COLORS.get(sector, "#ffffff")})
             time.sleep(0.2)
-            
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
         st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 지수 및 전력/원전 테마 복구가 완료되었습니다."
@@ -286,7 +283,6 @@ def update_theme_db():
             soup = BeautifulSoup(res.text, 'html.parser')
             links = soup.select('.type_1.theme td.col_type1 a')
             for link in links: theme_links.append((link.text.strip(), "https://finance.naver.com" + link['href']))
-        
         total_themes = len(theme_links)
         for idx, (theme_name, link) in enumerate(theme_links):
             status_text.text(f"🚀 테마 DB 갱신 중... ({idx+1}/{total_themes})")
@@ -300,7 +296,6 @@ def update_theme_db():
                     if theme_name not in theme_dict[name]: theme_dict[name] += f", {theme_name}"
                 else: theme_dict[name] = theme_name
             time.sleep(0.02)
-            
         pd.DataFrame(list(theme_dict.items()), columns=['종목명', '테마']).to_csv(THEME_DB_FILE, index=False, encoding='utf-8-sig')
         status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
@@ -401,7 +396,7 @@ def perform_batch_analysis(news_map):
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
-    # 💡 URL 문자열에 섞여 들어간 불필요한 마크다운 기호([ ] 및 ( ))를 완벽히 제거했습니다.
+    # 💡 완벽 수정: URL 문자열에 불필요하게 포함되었던 마크다운 링크 기호([ ], ( ))를 완전히 제거했습니다.
     url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
     
     headers = {
