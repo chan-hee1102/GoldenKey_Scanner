@@ -13,8 +13,6 @@ from urllib.parse import quote
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
 
-THEME_DB_FILE = "theme_db.csv"
-
 # ==========================================
 # 🛡️ [Security] Gemini API 키 및 모델 엔진 설정
 # ==========================================
@@ -163,20 +161,6 @@ st.markdown(
         flex-shrink: 0;
     }
 
-    /* 🌟 정밀 분석 탭 전용 프리미엄 카드 스타일 */
-    .sector-group-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; margin-top: 25px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 2px solid #cbd5e1; }
-    .analysis-card {
-        background: #ffffff; border-radius: 10px; padding: 16px; margin-bottom: 12px;
-        border: 1px solid #e2e8f0; border-left: 5px solid #3b82f6; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-    }
-    .ac-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-    .ac-title { font-size: 1.15rem; font-weight: 800; color: #0f172a; }
-    .ac-vol { font-size: 0.9rem; font-weight: 700; color: #ef4444; background: #fee2e2; padding: 2px 8px; border-radius: 6px; }
-    .ac-sectors { margin-bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; }
-    .ac-sector-badge { background: #1e293b; color: #ffffff; padding: 3px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700; }
-    .ac-news { font-size: 1rem; color: #334155; line-height: 1.5; background: #f8fafc; padding: 10px; border-radius: 6px; }
-    .ac-date { font-size: 0.8rem; color: #94a3b8; text-align: right; margin-top: 8px; font-weight: 600; }
-
     /* 사이드바 테마 아이템 스타일 */
     .sidebar-theme-row {
         display: flex;
@@ -206,6 +190,7 @@ if 'global_themes' not in st.session_state: st.session_state.global_themes = []
 if 'global_briefing' not in st.session_state: st.session_state.global_briefing = "글로벌 스캔을 실행해주세요."
 if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.DataFrame()
 if 'analysis_results' not in st.session_state: st.session_state.analysis_results = []
+if 'news_payload' not in st.session_state: st.session_state.news_payload = {} # 뉴스 데이터 보관용
 
 # ==========================================
 # 🌟 전역 설정 (섹터 색상 동기화)
@@ -216,9 +201,7 @@ SECTOR_COLORS = {
     '금융/지주': '#f3f4f6', '개별주': '#ffffff'
 }
 
-CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
-
-# --- [2] 미 증시 엔진 (에디터 간섭 방지 URL 분리) ---
+# --- [2] 미 증시 엔진 ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
@@ -248,7 +231,6 @@ def fetch_robust_finance(ticker):
         val_tag = soup.find("fin-streamer", {"data-field": "regularMarketPrice"})
         rate_tag = soup.find("fin-streamer", {"data-field": "regularMarketChangePercent"})
         if val_tag and val_tag.text != "0.00" and val_tag.text != "":
-            # 괄호 제거 및 부호 명확화
             rate_text = rate_tag.text.strip().replace('(', '').replace(')', '')
             if not rate_text.startswith('-') and not rate_text.startswith('+') and rate_text != "0.00%":
                 rate_text = f"+{rate_text}"
@@ -295,39 +277,7 @@ def get_global_market_status():
         st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 지수 및 전력/원전 테마 복구가 완료되었습니다."
     except: st.session_state.global_briefing = "해외 서버 동기화 일시 지연 중"
 
-def update_theme_db():
-    session = requests.Session()
-    session.headers.update({'User-Agent': 'Mozilla/5.0'})
-    theme_dict = {}
-    progress_bar = st.progress(0); status_text = st.empty()
-    try:
-        theme_links = []
-        for i in range(1, 8):
-            url = "https://" + f"finance.naver.com/sise/theme.naver?&page={i}"
-            res = session.get(url, timeout=5); res.encoding = 'euc-kr'
-            soup = BeautifulSoup(res.text, 'html.parser')
-            links = soup.select('.type_1.theme td.col_type1 a')
-            for link in links: theme_links.append((link.text.strip(), "https://finance.naver.com" + link['href']))
-        
-        total_themes = len(theme_links)
-        for idx, (theme_name, link) in enumerate(theme_links):
-            status_text.text(f"🚀 테마 DB 갱신 중... ({idx+1}/{total_themes})")
-            progress_bar.progress((idx + 1) / total_themes)
-            detail_res = session.get(link, timeout=5); detail_res.encoding = 'euc-kr'
-            detail_soup = BeautifulSoup(detail_res.text, 'html.parser')
-            stocks = detail_soup.select('.type_5 td.name a')
-            for stock in stocks:
-                name = stock.text.strip()
-                if name in theme_dict:
-                    if theme_name not in theme_dict[name]: theme_dict[name] += f", {theme_name}"
-                else: theme_dict[name] = theme_name
-            time.sleep(0.02)
-            
-        pd.DataFrame(list(theme_dict.items()), columns=['종목명', '테마']).to_csv(THEME_DB_FILE, index=False, encoding='utf-8-sig')
-        status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
-    except Exception as e: status_text.error(f"오류: {e}")
-
-# --- [4] 💡 종목 정밀 분석 엔진 ---
+# --- [3] 💡 종목 정밀 분석 엔진 (Gemini) ---
 
 def fetch_stock_news_headlines(stock_name):
     headers = {
@@ -371,7 +321,7 @@ def fetch_stock_news_headlines(stock_name):
         except: pass
             
     if not titles:
-        return [f"[에러] 네이버 검색 전면 차단됨 (1, 2차 사냥터 모두 실패)"]
+        return [f"[에러] 네이버 검색 전면 차단됨"]
         
     unique_titles = []
     for t in titles:
@@ -385,7 +335,6 @@ def perform_batch_analysis(news_map):
     
     try:
         analysis_model = genai.GenerativeModel('gemini-2.5-flash')
-        
         prompt = f"""
         당신은 한국 주식 퀀트 분석 전문가입니다. 
         아래 데이터는 실시간 주도주들에 대해 네이버 뉴스 제목을 종목당 최대 10개씩 크롤링한 결과입니다.
@@ -395,27 +344,25 @@ def perform_batch_analysis(news_map):
         
         [출력 양식 및 분석 규칙]
         1. 각 종목당 제공된 여러 개의 뉴스 제목을 모두 읽고, 해당 종목이 상승한 '진짜 핵심 재료'를 파악하세요.
-        2. 타 종목 기사는 무시하고, 데이터에 "[에러]" 라고 적혀있다면 이유를 "[에러] 크롤링 실패" 라고 적어주세요.
-        3. '섹터'는 해당 재료를 기반으로 판단하되, 꼭 1개가 아니어도 됩니다. 연관된 모든 섹터를 배열 형태로 추출하세요. (예: ["반도체", "로봇/AI"]).
+        2. 타 종목 기사는 무시하고, 데이터에 "[에러]" 라고 적혀있다면 이유를 "최근 뉴스 없음" 이라고 적어주세요.
+        3. '섹터'는 해당 재료를 기반으로 판단하되, 꼭 1개가 아니어도 됩니다. (예: ["반도체", "로봇/AI"]). 뉴스가 없거나 파악이 불가능하면 ["개별주"] 로 분류하세요.
         4. 반드시 아래와 같은 순수 JSON 배열(Array) 형식으로만 응답하세요. 백틱(`)이나 부가 설명은 절대 넣지 마세요.
         
         [예시]
         [
-          {{"종목명": "삼성전자", "섹터": ["반도체", "로봇/AI"], "이유": "엔비디아 HBM 퀄테스트 통과 기대감", "기사날짜": "최근 특징주"}},
-          {{"종목명": "카카오", "섹터": ["금융/지주"], "이유": "최근 주요 재료 발견 안 됨", "기사날짜": "-"}}
+          {{"종목명": "삼성전자", "섹터": ["반도체"], "이유": "엔비디아 HBM 퀄테스트 통과 기대감", "기사날짜": "최근 특징주"}},
+          {{"종목명": "카카오", "섹터": ["개별주"], "이유": "최근 주요 재료 발견 안 됨", "기사날짜": "-"}}
         ]
         """
         response = analysis_model.generate_content(prompt)
-        
         raw_text = response.text.strip()
         raw_text = re.sub(r"^```json\n?|^```\n?", "", raw_text) 
         raw_text = re.sub(r"\n?```$", "", raw_text)
-        
         return json.loads(raw_text)
     except Exception as e:
-        return [{"종목명": "분석 시스템 에러", "섹터": ["에러"], "이유": f"Gemini 분석 오류: {str(e)}", "기사날짜": "-"}]
+        return [{"종목명": "분석 시스템 에러", "섹터": ["개별주"], "이유": f"Gemini 분석 오류", "기사날짜": "-"}]
 
-# --- [5] 국내 데이터 크롤링 및 분류 로직 ---
+# --- [4] 국내 데이터 크롤링 ---
 
 def fetch_market_data(sosok, market_name):
     protocol = "https"
@@ -449,14 +396,6 @@ def fetch_market_data(sosok, market_name):
         st.error(f"[에러] {market_name} 데이터 수집 중 통신 오류: {e}")
         return pd.DataFrame()
 
-def apply_mega_sector(row):
-    stock_name = row['종목명']; t = str(row['테마'])
-    if stock_name in CUSTOM_SECTOR_MAP: return CUSTOM_SECTOR_MAP[stock_name]
-    keywords = {'반도체': ['반도체', 'HBM', 'CXL', '온디바이스', '메모리', 'NPU', '유리기판'], '2차전지': ['2차전지', '리튬', '전고체', '배터리'], '바이오': ['바이오', '제약', '신약', '임상', '비만'], '로봇/AI': ['로봇', 'AI', '인공지능'], '전력/원전': ['전력', '전선', '원자력'], '방산/우주': ['방산', '우주', '항공'], '금융/지주': ['지주사', '은행', '증권', '밸류업']}
-    for sector, keys in keywords.items():
-        if any(k in t for k in keys): return sector
-    return '개별주'
-
 def format_volume_to_jo_eok(x_million):
     try:
         clean_val = str(x_million).replace(',', '')
@@ -465,7 +404,7 @@ def format_volume_to_jo_eok(x_million):
         return f"{eok // 10000}조 {eok % 10000}억" if eok >= 10000 else f"{eok}억"
     except: return str(x_million)
 
-# --- [6] UI 레이아웃 구성 ---
+# --- [5] UI 레이아웃 구성 ---
 
 with st.sidebar:
     st.title("🌐 글로벌 증시")
@@ -473,7 +412,6 @@ with st.sidebar:
         get_global_market_status()
     if st.session_state.global_indices:
         for idx in st.session_state.global_indices:
-            # 💡 수정 포인트: delta_color 파라미터를 지우고 CSS에 색상을 위임합니다.
             st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'])
     st.markdown("---")
     st.subheader("🇺🇸 미국 테마(ETF) 흐름")
@@ -483,13 +421,10 @@ with st.sidebar:
             st.markdown(f'<div class="sidebar-theme-row" style="background-color: {t["color"]};"><span style="color: #1e293b;">{t["name"]}</span><span style="color: {v_c};">{t["delta"]}</span></div>', unsafe_allow_html=True)
     st.info(f"📍 **전문가 브리핑:**\n{st.session_state.global_briefing}")
 
-col_title, col_btn = st.columns([7, 3])
+col_title, col_btn = st.columns([8, 2])
 with col_title: st.title("🔑 Golden Key Pro")
-with col_btn:
-    st.write(""); st.write("")
-    if st.button("🔄 테마 DB 최신화", use_container_width=True): update_theme_db()
 
-tab_scanner, tab_analysis = st.tabs(["🚀 실시간 주도주 스캐너", "📊 종목 정밀 분석"])
+tab_scanner, tab_analysis = st.tabs(["🚀 실시간 주도주 스캐너", "📰 종목별 상세 뉴스"])
 
 with tab_scanner:
     col_main, col_summary = st.columns([7, 3])
@@ -497,37 +432,63 @@ with tab_scanner:
         st.subheader("🏆 주도 섹터")
         summary_placeholder = st.empty()
     with col_main:
-        if st.button("🚀 국내 실시간 스캔 실행", use_container_width=True):
-            with st.spinner("국내 시장 수급 분석 중..."):
+        if st.button("🚀 국내 실시간 스캔 및 AI 분석 실행", use_container_width=True):
+            # 1단계: 수급 데이터 크롤링
+            with st.spinner("1/2. 실시간 시장 수급 분석 중..."):
                 df_k = fetch_market_data(0, '코스피')
                 df_q = fetch_market_data(1, '코스닥')
                 df = pd.concat([df_k, df_q], ignore_index=True)
                 
                 if df.empty:
-                    st.warning("⚠️ 네이버 금융에서 데이터를 가져오지 못했습니다. (접속 차단 또는 서버 응답 없음)")
+                    st.warning("⚠️ 네이버 금융에서 데이터를 가져오지 못했습니다.")
                 else:
                     df = df[~df['종목명'].str.contains('KODEX|TIGER|ACE|SOL|KBSTAR|HANARO|KOSEF|ARIRANG|스팩|ETN|선물|인버스|레버리지|VIX|옵션|마이티|히어로즈|TIMEFOLIO', na=False)]
-                    
                     df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace(r'%|\+', '', regex=True), errors='coerce')
                     df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
                     df = df.sort_values(by='거래대금_num', ascending=False).head(40)
                     df = df[df['등락률_num'] >= 4.0]
                     
-                    if df.empty:
-                        st.info("ℹ️ 현재 4% 이상 상승한 주도주(거래대금 상위)가 없습니다. (장이 열리지 않은 이른 아침일 수 있습니다.)")
-                    else:
-                        if os.path.exists(THEME_DB_FILE):
-                            t_df = pd.read_csv(THEME_DB_FILE)
-                            df['테마'] = df['종목명'].map(dict(zip(t_df['종목명'], t_df['테마']))).fillna('-')
-                        else: df['테마'] = '-'
-                        df['섹터'] = df.apply(apply_mega_sector, axis=1)
-                        st.session_state.domestic_df = df
-        
+            # 2단계: 종목별 뉴스 크롤링 및 Gemini 통합 분석
+            if not df.empty:
+                with st.spinner("2/2. 최신 뉴스 크롤링 및 Gemini 테마 정밀 분석 중... (약 1분 소요)"):
+                    news_payload = {}
+                    progress_bar = st.progress(0)
+                    stocks = df['종목명'].tolist()
+                    
+                    for i, name in enumerate(stocks):
+                        news_payload[name] = fetch_stock_news_headlines(name)
+                        progress_bar.progress((i + 1) / len(stocks))
+                        time.sleep(1.0) # 속도 개선을 위해 1초 대기로 변경
+                    
+                    # 탭 2를 위해 세션에 저장
+                    st.session_state.news_payload = news_payload
+                    
+                    # Gemini 모델로 일괄 분석
+                    ai_results = perform_batch_analysis(news_payload)
+                    st.session_state.analysis_results = ai_results
+                    
+                    # AI가 판단한 섹터를 데이터프레임에 매핑
+                    sector_dict = {}
+                    for item in ai_results:
+                        if isinstance(item, dict):
+                            s_name = item.get("종목명", "")
+                            sectors = item.get("섹터", ["개별주"])
+                            # 여러 섹터가 오더라도 첫 번째 값을 대표 섹터로 지정
+                            main_sec = sectors[0] if isinstance(sectors, list) and len(sectors) > 0 else "개별주"
+                            sector_dict[s_name] = main_sec
+                            
+                    df['섹터'] = df['종목명'].map(sector_dict).fillna('개별주')
+                    st.session_state.domestic_df = df
+            else:
+                st.info("ℹ️ 현재 조건에 맞는 주도주가 없습니다.")
+
+        # 메인 화면 렌더링 (AI가 분류한 섹터 기반)
         if not st.session_state.domestic_df.empty:
             for _, row in st.session_state.domestic_df.iterrows():
                 bg = SECTOR_COLORS.get(row['섹터'], '#ffffff')
                 rv = row['등락률_num']; rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1f2937")
                 st.markdown(f'<div class="stock-card"><div class="left-zone"><span class="market-tag {"market-kospi" if row["시장"]=="코스피" else "market-kosdaq"}">{row["시장"]}</span><span class="stock-name">{row["종목명"]}</span></div><div class="center-zone"><span class="sector-badge" style="background: {bg}; color: #1e293b;">{row["섹터"]}</span></div><div class="right-zone"><span style="color: {rt_c}; font-weight: 800; font-size: 1.1rem; min-width: 65px; text-align: right;">+{rv}%</span><span class="stock-vol">{format_volume_to_jo_eok(row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
+            
             with summary_placeholder.container():
                 s_group = st.session_state.domestic_df[st.session_state.domestic_df['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
                 for s_name, count in s_group.items():
@@ -538,74 +499,40 @@ with tab_scanner:
                             st.markdown(f'<div class="sector-item"><div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div><div class="sector-item-right"><span class="val-rate" style="color:{"#ef4444" if s_row["등락률_num"]>=20 else "#334155"};">+{s_row["등락률_num"]}%</span><span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
 
 with tab_analysis:
-    st.subheader("🔍 뉴스 기반 테마 정밀 분석 (Gemini LLM)")
-    if st.session_state.domestic_df.empty:
-        st.info("실시간 주도주 스캔을 먼저 실행하세요.")
+    st.subheader("📰 AI 요약 및 종목별 특징주 리스트")
+    if not st.session_state.news_payload:
+        st.info("👈 [실시간 주도주 스캐너] 탭에서 스캔을 먼저 실행해 주세요.")
     else:
-        if st.button("🔎 뉴스 크롤링 및 Gemini 정밀 분석 시작", use_container_width=True):
-            with st.spinner("안전한 뉴스 수집 및 정밀 분석을 위해 약 1~2분 정도 소요됩니다. 잠시만 대기해 주세요..."):
-                news_payload = {}
-                progress_bar = st.progress(0)
-                stocks = st.session_state.domestic_df['종목명'].tolist()
-                for i, name in enumerate(stocks):
-                    news_payload[name] = fetch_stock_news_headlines(name)
-                    progress_bar.progress((i + 1) / len(stocks))
-                    time.sleep(2.0) 
-                
-                with st.expander("🚨 [디버깅] 크롤러가 수집한 듀얼 검색 결과 확인", expanded=False):
-                    st.json(news_payload)
-                
-                st.session_state.analysis_results = perform_batch_analysis(news_payload)
-                st.success("✅ 정밀 분석 완료!")
-
-        if st.session_state.analysis_results:
-            grouped_data = {}
-            
+        st.markdown("<p style='color:#64748b; margin-bottom: 20px;'>스캔된 주도주들의 AI 상승 요약과 최근 기사 10개를 상세하게 확인합니다.</p>", unsafe_allow_html=True)
+        
+        for stock, headlines in st.session_state.news_payload.items():
+            # AI 분석 결과에서 상승 이유 추출
+            ai_reason = "최근 뚜렷한 재료 발견 안됨"
             for item in st.session_state.analysis_results:
-                if isinstance(item, str):
-                    continue
-                    
-                stock_name = item.get("종목명", "알 수 없음")
-                
-                vol_str = "N/A"
-                if not st.session_state.domestic_df.empty:
-                    match_row = st.session_state.domestic_df[st.session_state.domestic_df['종목명'] == stock_name]
-                    if not match_row.empty:
-                        vol_str = format_volume_to_jo_eok(match_row.iloc[0]['거래대금_num'])
-                
-                item['거래대금'] = vol_str
-                
-                sectors = item.get("섹터", ["개별주"])
-                main_sector = sectors[0] if isinstance(sectors, list) and len(sectors) > 0 else "개별주"
-                
-                if main_sector not in grouped_data:
-                    grouped_data[main_sector] = []
-                grouped_data[main_sector].append(item)
+                if isinstance(item, dict) and item.get("종목명") == stock:
+                    ai_reason = item.get("이유", ai_reason)
+                    break
             
-            st.markdown('<div class="analysis-list-container">', unsafe_allow_html=True)
-            for sector, items in grouped_data.items():
-                st.markdown(f'<div class="sector-group-title">🎯 {sector} 관련주</div>', unsafe_allow_html=True)
-                
-                for item in items:
-                    sectors_list = item.get("섹터", [])
-                    if isinstance(sectors_list, str): sectors_list = [sectors_list]
-                    
-                    badge_html = "".join([f'<span class="ac-sector-badge">{s}</span>' for s in sectors_list])
-                    
-                    card_html = f"""
-                    <div class="analysis-card">
-                        <div class="ac-header">
-                            <span class="ac-title">{item.get('종목명', '')}</span>
-                            <span class="ac-vol">💰 거래대금: {item.get('거래대금', '')}</span>
-                        </div>
-                        <div class="ac-sectors">
-                            {badge_html}
-                        </div>
-                        <div class="ac-news">
-                            📰 <b>상승 이유:</b> {item.get('이유', '')}
-                        </div>
-                        <div class="ac-date">🕒 기사날짜: {item.get('기사날짜', '')}</div>
-                    </div>
-                    """
-                    st.markdown(card_html, unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # 뉴스 리스트 HTML 조립
+            news_li_html = ""
+            if not headlines or headlines[0].startswith("[에러]"):
+                news_li_html = "<li style='color: #94a3b8;'>수집된 관련 특징주 기사가 없습니다.</li>"
+            else:
+                news_li_html = "".join([f"<li style='margin-bottom: 8px; line-height: 1.4;'>{h}</li>" for h in headlines])
+            
+            # 카드 UI로 깔끔하게 렌더링
+            card_html = f"""
+            <div style="background: white; border-radius: 8px; padding: 18px; margin-bottom: 15px; border-left: 5px solid #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="display: flex; align-items: baseline; justify-content: space-between;">
+                    <h3 style="margin: 0; color: #0f172a; font-weight: 800;">{stock}</h3>
+                </div>
+                <div style="margin-top: 10px; padding: 10px 12px; background: #eff6ff; border-radius: 6px; color: #1e40af; font-size: 0.95rem; font-weight: 700;">
+                    💡 AI 핵심 재료: {ai_reason}
+                </div>
+                <hr style="border: 0; height: 1px; background: #e2e8f0; margin: 15px 0;">
+                <ul style="margin:0; padding-left: 20px; font-size: 0.9rem; color: #334155; font-weight: 600;">
+                    {news_li_html}
+                </ul>
+            </div>
+            """
+            st.markdown(card_html, unsafe_allow_html=True)
