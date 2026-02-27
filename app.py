@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import re
 import json
+import random
 import google.generativeai as genai
 from urllib.parse import quote
 
@@ -201,12 +202,10 @@ SECTOR_COLORS = {
 def get_sector_color(sector_name):
     return SECTOR_COLORS.get(sector_name, '#f8fafc')
 
-# 💡 핵심 방어 코드: 단어가 글자 단위로 쪼개지는 현상 원천 차단
 def force_list(val):
     if isinstance(val, str):
         return [val]
     if isinstance(val, list):
-        # 만약 ['자', '동', '차'] 처럼 한 글자씩 쪼개져 있다면 강제로 하나로 합침
         if len(val) > 1 and all(len(str(x)) == 1 for x in val):
             return ["".join(str(x) for x in val)]
         return [str(x) for x in val]
@@ -290,27 +289,44 @@ def get_global_market_status():
 
 # --- [3] 💡 종목 정밀 분석 엔진 (Gemini) ---
 
+# 🛡️ 봇 탐지 우회를 위한 다양한 User-Agent 풀 구성
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Whale/3.25.232.19 Safari/537.36'
+]
+
 def fetch_stock_news_headlines(stock_name):
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    titles = []
+    gen_url = "https://search.naver.com/search.naver"
+    
+    # 1. 관련도순 (sort=0)
+    headers_rel = {
+        'User-Agent': random.choice(USER_AGENTS),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Referer': "https://search.naver.com/"
     }
-    titles = []
     
     try:
-        gen_url = "https://search.naver.com/search.naver"
         params_rel = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'}
-        res_rel = requests.get(gen_url, params=params_rel, headers=headers, timeout=5)
+        res_rel = requests.get(gen_url, params=params_rel, headers=headers_rel, timeout=5)
         if res_rel.status_code == 200:
             soup_rel = BeautifulSoup(res_rel.text, 'html.parser')
             for tag in soup_rel.select(".news_tit")[:10]:
                 titles.append(tag.text.strip())
     except: pass
 
+    # ⏳ 봇 탐지 회피용 랜덤 딜레이 (1.2초 ~ 2.2초 대기)
+    time.sleep(random.uniform(1.2, 2.2))
+
+    # 2. 최신순 (sort=1) - 헤더 UA 무작위 변경
+    headers_lat = headers_rel.copy()
+    headers_lat['User-Agent'] = random.choice(USER_AGENTS)
+    
     try:
         params_lat = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '1'}
-        res_lat = requests.get(gen_url, params=params_lat, headers=headers, timeout=5)
+        res_lat = requests.get(gen_url, params=params_lat, headers=headers_lat, timeout=5)
         if res_lat.status_code == 200:
             soup_lat = BeautifulSoup(res_lat.text, 'html.parser')
             for tag in soup_lat.select(".news_tit")[:10]:
@@ -451,7 +467,7 @@ with tab_scanner:
                     df = df[df['등락률_num'] >= 4.0]
                     
             if not df.empty:
-                with st.spinner("2/2. 탑티어 AI 트레이더의 테마 정밀 분석 중... (약 1분 소요)"):
+                with st.spinner("2/2. 탑티어 AI 트레이더의 테마 정밀 분석 중... (방화벽 우회를 위해 약 2~3분 소요)"):
                     news_payload = {}
                     progress_bar = st.progress(0)
                     stocks = df['종목명'].tolist()
@@ -459,7 +475,8 @@ with tab_scanner:
                     for i, name in enumerate(stocks):
                         news_payload[name] = fetch_stock_news_headlines(name)
                         progress_bar.progress((i + 1) / len(stocks))
-                        time.sleep(1.0) 
+                        # ⏳ 종목과 종목 사이에도 랜덤 딜레이 적용 (1.0 ~ 1.5초)
+                        time.sleep(random.uniform(1.0, 1.5)) 
                     
                     st.session_state.news_payload = news_payload
                     ai_results = perform_batch_analysis(news_payload)
@@ -469,11 +486,9 @@ with tab_scanner:
                     for item in ai_results:
                         if isinstance(item, dict):
                             s_name = item.get("종목명", "")
-                            # 💡 여기서 1차로 강제 리스트화 처리
                             sectors = force_list(item.get("섹터", ["개별주"]))
                             sector_dict[s_name] = sectors
                             
-                    # 💡 데이터프레임에 매핑할 때도 2차로 강제 리스트화
                     df['섹터'] = df['종목명'].apply(lambda x: force_list(sector_dict.get(x, ['개별주'])))
                     st.session_state.domestic_df = df
             else:
@@ -482,7 +497,6 @@ with tab_scanner:
         if not st.session_state.domestic_df.empty:
             for _, row in st.session_state.domestic_df.iterrows():
                 badges_html = ""
-                # 💡 렌더링 할 때도 확실하게 강제 검증된 리스트만 순회
                 safe_sectors = force_list(row['섹터'])
                 for sec in safe_sectors:
                     bg = get_sector_color(sec)
