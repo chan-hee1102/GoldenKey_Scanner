@@ -8,7 +8,7 @@ import os
 import re
 import json
 import google.generativeai as genai
-from urllib.parse import quote
+from urllib.parse import quote  # 💡 네이버 금융 검색용 인코딩 모듈 추가
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -400,9 +400,10 @@ def perform_batch_analysis(news_map):
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
-    # 💡 완벽 수정: URL 양끝에 어떤 따옴표(')나 마크다운 찌꺼기도 들어가지 않은 순수 문자열입니다.
-    url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=0](https://finance.naver.com/sise/sise_quant.naver?sosok=1){sosok}"
+    # 💡 완벽하게 수정된 깨끗한 URL 문자열
+    url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
     
+    # 💡 완벽하게 수정된 깨끗한 Referer 문자열
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': '[https://finance.naver.com/](https://finance.naver.com/)'
