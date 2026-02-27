@@ -7,7 +7,6 @@ from datetime import datetime, timedelta, timezone
 import os
 import re
 import json
-import random
 import google.generativeai as genai
 from urllib.parse import quote
 
@@ -85,7 +84,7 @@ st.markdown(
     }
 
     .left-zone { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; }
-    .center-zone { display: flex; align-items: center; gap: 4px; flex: 0 1 auto; margin-left: 10px; flex-wrap: wrap; }
+    .center-zone { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; margin-left: 10px; }
     .right-zone { display: flex; align-items: center; gap: 15px; flex: 1; justify-content: flex-end; }
 
     .stock-name { font-weight: 700; font-size: 1rem; color: #1e293b; white-space: nowrap; }
@@ -101,9 +100,9 @@ st.markdown(
     .market-kosdaq { background-color: #ffedd5; color: #9a3412; }
 
     .sector-badge {
-        padding: 2px 8px;
+        padding: 2px 10px;
         border-radius: 12px;
-        font-size: 0.7rem;
+        font-size: 0.75rem;
         font-weight: 700;
         border: 1px solid #e2e8f0;
         white-space: nowrap;
@@ -184,32 +183,23 @@ st.markdown(
 )
 
 # ==========================================
-# 🌟 세션 및 전역 헬퍼 설정
+# 🌟 세션 상태(Session State) 초기화
 # ==========================================
 if 'global_indices' not in st.session_state: st.session_state.global_indices = []
 if 'global_themes' not in st.session_state: st.session_state.global_themes = []
 if 'global_briefing' not in st.session_state: st.session_state.global_briefing = "글로벌 스캔을 실행해주세요."
 if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.DataFrame()
 if 'analysis_results' not in st.session_state: st.session_state.analysis_results = []
-if 'news_payload' not in st.session_state: st.session_state.news_payload = {} 
+if 'news_payload' not in st.session_state: st.session_state.news_payload = {} # 뉴스 데이터 보관용
 
+# ==========================================
+# 🌟 전역 설정 (섹터 색상 동기화)
+# ==========================================
 SECTOR_COLORS = {
     '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', 
     '전력/원전': '#fef3c7', '바이오': '#fee2e2', '방산/우주': '#f1f5f9', 
-    '금융/지주': '#f3f4f6', '자동차': '#e0f2fe', '현대차그룹': '#cffafe', '철강': '#f1f5f9'
+    '금융/지주': '#f3f4f6', '개별주': '#ffffff'
 }
-
-def get_sector_color(sector_name):
-    return SECTOR_COLORS.get(sector_name, '#f8fafc')
-
-def force_list(val):
-    if isinstance(val, str):
-        return [val]
-    if isinstance(val, list):
-        if len(val) > 1 and all(len(str(x)) == 1 for x in val):
-            return ["".join(str(x) for x in val)]
-        return [str(x) for x in val]
-    return ["개별주"]
 
 # --- [2] 미 증시 엔진 ---
 
@@ -289,60 +279,55 @@ def get_global_market_status():
 
 # --- [3] 💡 종목 정밀 분석 엔진 (Gemini) ---
 
-# 🛡️ 봇 탐지 우회를 위한 다양한 User-Agent 풀 구성
-USER_AGENTS = [
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Edge/122.0.0.0 Safari/537.36',
-    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Whale/3.25.232.19 Safari/537.36'
-]
-
 def fetch_stock_news_headlines(stock_name):
-    titles = []
-    gen_url = "https://search.naver.com/search.naver"
-    
-    # 1. 관련도순 (sort=0)
-    headers_rel = {
-        'User-Agent': random.choice(USER_AGENTS),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Referer': "https://search.naver.com/"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
+        'Referer': "https://" + "finance.naver.com/"
     }
-    
+    titles = []
     try:
-        params_rel = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'}
-        res_rel = requests.get(gen_url, params=params_rel, headers=headers_rel, timeout=5)
-        if res_rel.status_code == 200:
-            soup_rel = BeautifulSoup(res_rel.text, 'html.parser')
-            for tag in soup_rel.select(".news_tit")[:10]:
-                titles.append(tag.text.strip())
-    except: pass
-
-    # ⏳ 봇 탐지 회피용 랜덤 딜레이 (1.2초 ~ 2.2초 대기)
-    time.sleep(random.uniform(1.2, 2.2))
-
-    # 2. 최신순 (sort=1) - 헤더 UA 무작위 변경
-    headers_lat = headers_rel.copy()
-    headers_lat['User-Agent'] = random.choice(USER_AGENTS)
-    
-    try:
-        params_lat = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '1'}
-        res_lat = requests.get(gen_url, params=params_lat, headers=headers_lat, timeout=5)
-        if res_lat.status_code == 200:
-            soup_lat = BeautifulSoup(res_lat.text, 'html.parser')
-            for tag in soup_lat.select(".news_tit")[:10]:
+        encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
+        fin_url = "https://" + f"finance.naver.com/news/news_search.naver?q={encoded_kw}"
+        res_fin = requests.get(fin_url, headers=headers, timeout=10)
+        res_fin.encoding = 'euc-kr' 
+        
+        if res_fin.status_code == 200:
+            soup_fin = BeautifulSoup(res_fin.text, 'html.parser')
+            tags = soup_fin.select(".articleSubject a") or soup_fin.select(".tit") or soup_fin.select("dt a")
+            for tag in tags[:10]:
                 text = tag.text.strip()
-                if text not in titles: 
-                    titles.append(text)
-    except: pass
+                if text: titles.append(text)
+    except: pass 
 
     if not titles:
-        return ["[에러] 뉴스 검색 실패 또는 검색어 차단됨"]
+        try:
+            gen_url = "https://" + "search.naver.com/search.naver"
+            params = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'} 
+            headers['Referer'] = "https://" + "search.naver.com/"
+            
+            res_gen = requests.get(gen_url, params=params, headers=headers, timeout=10)
+            if res_gen.status_code == 200:
+                soup_gen = BeautifulSoup(res_gen.text, 'html.parser')
+                selectors = [".news_tit", ".title_link", "a.news_tit", ".dsc_txt_tit", ".api_txt_lines"]
+                for sel in selectors:
+                    tags = soup_gen.select(sel)
+                    if tags: 
+                        for tag in tags[:10]:
+                            text = tag.text.strip()
+                            if text: titles.append(text)
+                        break 
+        except: pass
+            
+    if not titles:
+        return [f"[에러] 네이버 검색 전면 차단됨"]
         
     unique_titles = []
     for t in titles:
         if t not in unique_titles: unique_titles.append(t)
             
-    return unique_titles[:20]
+    return unique_titles[:10]
 
 def perform_batch_analysis(news_map):
     if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
@@ -351,25 +336,21 @@ def perform_batch_analysis(news_map):
     try:
         analysis_model = genai.GenerativeModel('gemini-2.5-flash')
         prompt = f"""
-        당신은 여의도 탑티어 프랍 트레이더이자 주식 단기 주도주 분석 전문가입니다.
-        아래 데이터는 오늘 시장에서 강한 수급이 들어온 실시간 주도주들의 '관련도순+최신순' 네이버 뉴스 헤드라인 모음(종목당 최대 20개)입니다.
+        당신은 한국 주식 퀀트 분석 전문가입니다. 
+        아래 데이터는 실시간 주도주들에 대해 네이버 뉴스 제목을 종목당 최대 10개씩 크롤링한 결과입니다.
         
         [데이터]
         {json.dumps(news_map, ensure_ascii=False)}
         
-        [전문가 분석 규칙]
-        1. 제공된 뉴스를 심층 분석하여 각 종목이 상승한 '진짜 핵심 재료'를 파악하세요.
-        2. '섹터'는 해당 재료를 대표하는 테마 키워드로 작성하되, 아래 원칙을 엄격히 지키세요:
-           - [테마 병합]: '2차전지'와 '2차전지/ESS'처럼 유사하거나 겹치는 테마는 가장 대표적이고 포괄적인 단어 하나(예: '2차전지')로 확실하게 합치세요.
-           - [그룹주 모멘텀]: 만약 현대차, 한화 등 특정 대기업 그룹사들의 뉴스가 엮여서 동반 상승하는 흐름이라면, 기존 섹터(예: '자동차') 외에 '현대차그룹' 같은 그룹사 테마명도 섹터 배열에 추가하세요.
-           - [팩트 기반 추출]: 쓸데없이 말도 안 되는 재료를 억지로 엮지 마세요. 뉴스에 확실하게 근거가 있는 메인 모멘텀만 배열에 담으세요. (복수 섹터 허용)
-        3. 데이터에 뉴스가 없거나 파악이 불가능하면 "섹터": ["개별주"], "이유": "최근 뚜렷한 재료 발견 안됨" 으로 작성하세요.
-        4. 반드시 아래 예시와 같은 순수 JSON 배열(Array) 형식으로만 응답하세요. (백틱이나 부가 설명 절대 금지)
-           ★ 주의: "섹터" 값은 반드시 ["자동차", "로봇"] 처럼 완성된 단어의 배열로 반환하세요. 절대 하나의 문자열이나 글자 단위로 쪼개서 반환하지 마세요.
+        [출력 양식 및 분석 규칙]
+        1. 각 종목당 제공된 여러 개의 뉴스 제목을 모두 읽고, 해당 종목이 상승한 '진짜 핵심 재료'를 파악하세요.
+        2. 타 종목 기사는 무시하고, 데이터에 "[에러]" 라고 적혀있다면 이유를 "최근 뉴스 없음" 이라고 적어주세요.
+        3. '섹터'는 해당 재료를 기반으로 판단하되, 꼭 1개가 아니어도 됩니다. (예: ["반도체", "로봇/AI"]). 뉴스가 없거나 파악이 불가능하면 ["개별주"] 로 분류하세요.
+        4. 반드시 아래와 같은 순수 JSON 배열(Array) 형식으로만 응답하세요. 백틱(`)이나 부가 설명은 절대 넣지 마세요.
         
         [예시]
         [
-          {{"종목명": "현대차", "섹터": ["자동차", "현대차그룹", "로봇"], "이유": "새만금 9조 통큰 투자 및 AI·로봇 거점 추진 기대감", "기사날짜": "최근 특징주"}},
+          {{"종목명": "삼성전자", "섹터": ["반도체"], "이유": "엔비디아 HBM 퀄테스트 통과 기대감", "기사날짜": "최근 특징주"}},
           {{"종목명": "카카오", "섹터": ["개별주"], "이유": "최근 주요 재료 발견 안 됨", "기사날짜": "-"}}
         ]
         """
@@ -392,7 +373,7 @@ def fetch_market_data(sosok, market_name):
     referer_url = f"{protocol}://{host}/"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': referer_url
     }
     try:
@@ -452,6 +433,7 @@ with tab_scanner:
         summary_placeholder = st.empty()
     with col_main:
         if st.button("🚀 국내 실시간 스캔 및 AI 분석 실행", use_container_width=True):
+            # 1단계: 수급 데이터 크롤링
             with st.spinner("1/2. 실시간 시장 수급 분석 중..."):
                 df_k = fetch_market_data(0, '코스피')
                 df_q = fetch_market_data(1, '코스닥')
@@ -466,8 +448,9 @@ with tab_scanner:
                     df = df.sort_values(by='거래대금_num', ascending=False).head(40)
                     df = df[df['등락률_num'] >= 4.0]
                     
+            # 2단계: 종목별 뉴스 크롤링 및 Gemini 통합 분석
             if not df.empty:
-                with st.spinner("2/2. 탑티어 AI 트레이더의 테마 정밀 분석 중... (방화벽 우회를 위해 약 2~3분 소요)"):
+                with st.spinner("2/2. 최신 뉴스 크롤링 및 Gemini 테마 정밀 분석 중... (약 1분 소요)"):
                     news_payload = {}
                     progress_bar = st.progress(0)
                     stocks = df['종목명'].tolist()
@@ -475,100 +458,69 @@ with tab_scanner:
                     for i, name in enumerate(stocks):
                         news_payload[name] = fetch_stock_news_headlines(name)
                         progress_bar.progress((i + 1) / len(stocks))
-                        # ⏳ 종목과 종목 사이에도 랜덤 딜레이 적용 (1.0 ~ 1.5초)
-                        time.sleep(random.uniform(1.0, 1.5)) 
+                        time.sleep(1.0) # 속도 개선을 위해 1초 대기로 변경
                     
+                    # 탭 2를 위해 세션에 저장
                     st.session_state.news_payload = news_payload
+                    
+                    # Gemini 모델로 일괄 분석
                     ai_results = perform_batch_analysis(news_payload)
                     st.session_state.analysis_results = ai_results
                     
+                    # AI가 판단한 섹터를 데이터프레임에 매핑
                     sector_dict = {}
                     for item in ai_results:
                         if isinstance(item, dict):
                             s_name = item.get("종목명", "")
-                            sectors = force_list(item.get("섹터", ["개별주"]))
-                            sector_dict[s_name] = sectors
+                            sectors = item.get("섹터", ["개별주"])
+                            # 여러 섹터가 오더라도 첫 번째 값을 대표 섹터로 지정
+                            main_sec = sectors[0] if isinstance(sectors, list) and len(sectors) > 0 else "개별주"
+                            sector_dict[s_name] = main_sec
                             
-                    df['섹터'] = df['종목명'].apply(lambda x: force_list(sector_dict.get(x, ['개별주'])))
+                    df['섹터'] = df['종목명'].map(sector_dict).fillna('개별주')
                     st.session_state.domestic_df = df
             else:
                 st.info("ℹ️ 현재 조건에 맞는 주도주가 없습니다.")
 
+        # 메인 화면 렌더링 (AI가 분류한 섹터 기반)
         if not st.session_state.domestic_df.empty:
             for _, row in st.session_state.domestic_df.iterrows():
-                badges_html = ""
-                safe_sectors = force_list(row['섹터'])
-                for sec in safe_sectors:
-                    bg = get_sector_color(sec)
-                    badges_html += f'<span class="sector-badge" style="background: {bg}; color: #1e293b;">{sec}</span>'
-                
+                bg = SECTOR_COLORS.get(row['섹터'], '#ffffff')
                 rv = row['등락률_num']; rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1f2937")
-                
-                st.markdown(f'''
-                <div class="stock-card">
-                    <div class="left-zone">
-                        <span class="market-tag {"market-kospi" if row["시장"]=="코스피" else "market-kosdaq"}">{row["시장"]}</span>
-                        <span class="stock-name">{row["종목명"]}</span>
-                    </div>
-                    <div class="center-zone">{badges_html}</div>
-                    <div class="right-zone">
-                        <span style="color: {rt_c}; font-weight: 800; font-size: 1.1rem; min-width: 65px; text-align: right;">+{rv}%</span>
-                        <span class="stock-vol">{format_volume_to_jo_eok(row["거래대금_num"])}</span>
-                    </div>
-                </div>
-                ''', unsafe_allow_html=True)
+                st.markdown(f'<div class="stock-card"><div class="left-zone"><span class="market-tag {"market-kospi" if row["시장"]=="코스피" else "market-kosdaq"}">{row["시장"]}</span><span class="stock-name">{row["종목명"]}</span></div><div class="center-zone"><span class="sector-badge" style="background: {bg}; color: #1e293b;">{row["섹터"]}</span></div><div class="right-zone"><span style="color: {rt_c}; font-weight: 800; font-size: 1.1rem; min-width: 65px; text-align: right;">+{rv}%</span><span class="stock-vol">{format_volume_to_jo_eok(row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
             
             with summary_placeholder.container():
-                theme_counts = {}
-                for idx, row in st.session_state.domestic_df.iterrows():
-                    safe_sectors = force_list(row['섹터'])
-                    for sec in safe_sectors:
-                        if sec == '개별주' and len(safe_sectors) > 1: continue 
-                        if sec not in theme_counts: theme_counts[sec] = []
-                        theme_counts[sec].append(row)
-                
-                sorted_themes = sorted(theme_counts.items(), key=lambda x: (len(x[1]), sum(r['거래대금_num'] for r in x[1])), reverse=True)
-                
-                for s_name, stocks_list in sorted_themes:
-                    stocks_df = pd.DataFrame(stocks_list).sort_values('등락률_num', ascending=False)
-                    
-                    with st.expander(f"**{s_name}** ({len(stocks_df)})", expanded=True):
-                        for idx_l, (_, s_row) in enumerate(stocks_df.iterrows()):
+                s_group = st.session_state.domestic_df[st.session_state.domestic_df['섹터'] != '개별주'].groupby('섹터').size().sort_values(ascending=False)
+                for s_name, count in s_group.items():
+                    with st.expander(f"**{s_name}** ({count})", expanded=True):
+                        s_stocks = st.session_state.domestic_df[st.session_state.domestic_df['섹터'] == s_name].sort_values('등락률_num', ascending=False)
+                        for idx_l, (idx, s_row) in enumerate(s_stocks.iterrows()):
                             ldr = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
-                            rv = s_row["등락률_num"]
-                            
-                            rate_color = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#334155")
-                            
-                            st.markdown(f'''
-                            <div class="sector-item">
-                                <div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div>
-                                <div class="sector-item-right">
-                                    <span class="val-rate" style="color:{rate_color};">+{rv}%</span>
-                                    <span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span>
-                                </div>
-                            </div>
-                            ''', unsafe_allow_html=True)
+                            st.markdown(f'<div class="sector-item"><div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div><div class="sector-item-right"><span class="val-rate" style="color:{"#ef4444" if s_row["등락률_num"]>=20 else "#334155"};">+{s_row["등락률_num"]}%</span><span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span></div></div>', unsafe_allow_html=True)
 
 with tab_analysis:
     st.subheader("📰 AI 요약 및 종목별 특징주 리스트")
     if not st.session_state.news_payload:
         st.info("👈 [실시간 주도주 스캐너] 탭에서 스캔을 먼저 실행해 주세요.")
     else:
-        st.markdown("<p style='color:#64748b; margin-bottom: 20px;'>스캔된 주도주들의 AI 상승 요약과 최근 기사 20개를 상세하게 확인합니다.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#64748b; margin-bottom: 20px;'>스캔된 주도주들의 AI 상승 요약과 최근 기사 10개를 상세하게 확인합니다.</p>", unsafe_allow_html=True)
         
         for stock, headlines in st.session_state.news_payload.items():
+            # AI 분석 결과에서 상승 이유 추출
             ai_reason = "최근 뚜렷한 재료 발견 안됨"
             for item in st.session_state.analysis_results:
                 if isinstance(item, dict) and item.get("종목명") == stock:
                     ai_reason = item.get("이유", ai_reason)
                     break
             
+            # 뉴스 리스트 HTML 조립
             news_li_html = ""
             if not headlines or headlines[0].startswith("[에러]"):
                 news_li_html = "<li style='color: #94a3b8;'>수집된 관련 특징주 기사가 없습니다.</li>"
             else:
                 news_li_html = "".join([f"<li style='margin-bottom: 8px; line-height: 1.4;'>{h}</li>" for h in headlines])
             
+            # 카드 UI로 깔끔하게 렌더링
             card_html = f"""
             <div style="background: white; border-radius: 8px; padding: 18px; margin-bottom: 15px; border-left: 5px solid #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; align-items: baseline; justify-content: space-between;">
