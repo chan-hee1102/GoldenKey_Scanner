@@ -8,7 +8,7 @@ import os
 import re
 import json
 import google.generativeai as genai
-from urllib.parse import quote
+from urllib.parse import quote  # 💡 네이버 금융 검색용 인코딩 모듈 추가
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -400,15 +400,18 @@ def perform_batch_analysis(news_map):
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
-    # 💡 100% 완전하고 깨끗한 순수 문자열 URL (따옴표 에러 원천 차단)
-    url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
+    # 💡 5차 문제 해결: URL 문자열에 숨어있을 수 있는 유령 문자(Zero-width space)를 강제로 제거하는 철통 방어 로직 추가!
+    raw_url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
+    clean_url = raw_url.encode('ascii', 'ignore').decode('ascii').strip()
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': '[https://finance.naver.com/](https://finance.naver.com/)'
     }
+    
     try:
-        res = requests.get(url, headers=headers, timeout=5)
+        # 유령 문자가 완벽히 제거된 clean_url을 사용하여 통신 시도
+        res = requests.get(clean_url, headers=headers, timeout=5)
         res.encoding = 'euc-kr'
         soup = BeautifulSoup(res.text, 'html.parser')
         table = soup.find('table', {'class': 'type_2'})
