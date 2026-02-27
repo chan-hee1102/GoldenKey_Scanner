@@ -183,7 +183,7 @@ st.markdown(
 )
 
 # ==========================================
-# 🌟 세션 상태(Session State) 초기화
+# 🌟 세션 및 전역 헬퍼 설정
 # ==========================================
 if 'global_indices' not in st.session_state: st.session_state.global_indices = []
 if 'global_themes' not in st.session_state: st.session_state.global_themes = []
@@ -192,9 +192,6 @@ if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.Data
 if 'analysis_results' not in st.session_state: st.session_state.analysis_results = []
 if 'news_payload' not in st.session_state: st.session_state.news_payload = {} 
 
-# ==========================================
-# 🌟 전역 설정 (섹터 색상 동기화)
-# ==========================================
 SECTOR_COLORS = {
     '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', 
     '전력/원전': '#fef3c7', '바이오': '#fee2e2', '방산/우주': '#f1f5f9', 
@@ -202,8 +199,18 @@ SECTOR_COLORS = {
 }
 
 def get_sector_color(sector_name):
-    # 등록된 색상이 없으면 옅은 회색 계열 반환
     return SECTOR_COLORS.get(sector_name, '#f8fafc')
+
+# 💡 핵심 방어 코드: 단어가 글자 단위로 쪼개지는 현상 원천 차단
+def force_list(val):
+    if isinstance(val, str):
+        return [val]
+    if isinstance(val, list):
+        # 만약 ['자', '동', '차'] 처럼 한 글자씩 쪼개져 있다면 강제로 하나로 합침
+        if len(val) > 1 and all(len(str(x)) == 1 for x in val):
+            return ["".join(str(x) for x in val)]
+        return [str(x) for x in val]
+    return ["개별주"]
 
 # --- [2] 미 증시 엔진 ---
 
@@ -291,7 +298,6 @@ def fetch_stock_news_headlines(stock_name):
     }
     titles = []
     
-    # 1. 관련도순 (sort=0) 크롤링
     try:
         gen_url = "https://search.naver.com/search.naver"
         params_rel = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'}
@@ -302,7 +308,6 @@ def fetch_stock_news_headlines(stock_name):
                 titles.append(tag.text.strip())
     except: pass
 
-    # 2. 최신순 (sort=1) 크롤링
     try:
         params_lat = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '1'}
         res_lat = requests.get(gen_url, params=params_lat, headers=headers, timeout=5)
@@ -310,7 +315,7 @@ def fetch_stock_news_headlines(stock_name):
             soup_lat = BeautifulSoup(res_lat.text, 'html.parser')
             for tag in soup_lat.select(".news_tit")[:10]:
                 text = tag.text.strip()
-                if text not in titles: # 중복 방지
+                if text not in titles: 
                     titles.append(text)
     except: pass
 
@@ -321,7 +326,6 @@ def fetch_stock_news_headlines(stock_name):
     for t in titles:
         if t not in unique_titles: unique_titles.append(t)
             
-    # 관련도+최신순 합쳐서 최대 20개 반환
     return unique_titles[:20]
 
 def perform_batch_analysis(news_map):
@@ -344,7 +348,8 @@ def perform_batch_analysis(news_map):
            - [그룹주 모멘텀]: 만약 현대차, 한화 등 특정 대기업 그룹사들의 뉴스가 엮여서 동반 상승하는 흐름이라면, 기존 섹터(예: '자동차') 외에 '현대차그룹' 같은 그룹사 테마명도 섹터 배열에 추가하세요.
            - [팩트 기반 추출]: 쓸데없이 말도 안 되는 재료를 억지로 엮지 마세요. 뉴스에 확실하게 근거가 있는 메인 모멘텀만 배열에 담으세요. (복수 섹터 허용)
         3. 데이터에 뉴스가 없거나 파악이 불가능하면 "섹터": ["개별주"], "이유": "최근 뚜렷한 재료 발견 안됨" 으로 작성하세요.
-        4. 반드시 아래 예시와 같은 순수 JSON 배열(Array) 형식으로만 응답하세요. 백틱(`)이나 부가 설명은 절대 넣지 마세요.
+        4. 반드시 아래 예시와 같은 순수 JSON 배열(Array) 형식으로만 응답하세요. (백틱이나 부가 설명 절대 금지)
+           ★ 주의: "섹터" 값은 반드시 ["자동차", "로봇"] 처럼 완성된 단어의 배열로 반환하세요. 절대 하나의 문자열이나 글자 단위로 쪼개서 반환하지 마세요.
         
         [예시]
         [
@@ -371,7 +376,7 @@ def fetch_market_data(sosok, market_name):
     referer_url = f"{protocol}://{host}/"
     
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'Referer': referer_url
     }
     try:
@@ -431,7 +436,6 @@ with tab_scanner:
         summary_placeholder = st.empty()
     with col_main:
         if st.button("🚀 국내 실시간 스캔 및 AI 분석 실행", use_container_width=True):
-            # 1단계: 수급 데이터 크롤링
             with st.spinner("1/2. 실시간 시장 수급 분석 중..."):
                 df_k = fetch_market_data(0, '코스피')
                 df_q = fetch_market_data(1, '코스닥')
@@ -446,7 +450,6 @@ with tab_scanner:
                     df = df.sort_values(by='거래대금_num', ascending=False).head(40)
                     df = df[df['등락률_num'] >= 4.0]
                     
-            # 2단계: 종목별 뉴스 크롤링 및 Gemini 통합 분석
             if not df.empty:
                 with st.spinner("2/2. 탑티어 AI 트레이더의 테마 정밀 분석 중... (약 1분 소요)"):
                     news_payload = {}
@@ -459,32 +462,29 @@ with tab_scanner:
                         time.sleep(1.0) 
                     
                     st.session_state.news_payload = news_payload
-                    
                     ai_results = perform_batch_analysis(news_payload)
                     st.session_state.analysis_results = ai_results
                     
-                    # AI 결과를 딕셔너리로 매핑 (복수 섹터 지원)
                     sector_dict = {}
                     for item in ai_results:
                         if isinstance(item, dict):
                             s_name = item.get("종목명", "")
-                            sectors = item.get("섹터", ["개별주"])
-                            # 방어 코드: 섹터가 문자열로 오면 리스트로 변환
-                            if isinstance(sectors, str): sectors = [sectors]
+                            # 💡 여기서 1차로 강제 리스트화 처리
+                            sectors = force_list(item.get("섹터", ["개별주"]))
                             sector_dict[s_name] = sectors
                             
-                    # 각 종목에 섹터 리스트 할당
-                    df['섹터'] = df['종목명'].apply(lambda x: sector_dict.get(x, ['개별주']))
+                    # 💡 데이터프레임에 매핑할 때도 2차로 강제 리스트화
+                    df['섹터'] = df['종목명'].apply(lambda x: force_list(sector_dict.get(x, ['개별주'])))
                     st.session_state.domestic_df = df
             else:
                 st.info("ℹ️ 현재 조건에 맞는 주도주가 없습니다.")
 
-        # 메인 화면 렌더링 (다중 뱃지 지원)
         if not st.session_state.domestic_df.empty:
             for _, row in st.session_state.domestic_df.iterrows():
-                # 다중 섹터 뱃지 HTML 조립
                 badges_html = ""
-                for sec in row['섹터']:
+                # 💡 렌더링 할 때도 확실하게 강제 검증된 리스트만 순회
+                safe_sectors = force_list(row['섹터'])
+                for sec in safe_sectors:
                     bg = get_sector_color(sec)
                     badges_html += f'<span class="sector-badge" style="background: {bg}; color: #1e293b;">{sec}</span>'
                 
@@ -504,21 +504,18 @@ with tab_scanner:
                 </div>
                 ''', unsafe_allow_html=True)
             
-            # 우측 주도 섹터 요약 화면 렌더링 (테마별 종목 재그룹화)
             with summary_placeholder.container():
                 theme_counts = {}
                 for idx, row in st.session_state.domestic_df.iterrows():
-                    for sec in row['섹터']:
-                        # 다른 모멘텀이 있는 경우 굳이 '개별주' 폴더에 넣지 않음
-                        if sec == '개별주' and len(row['섹터']) > 1: continue 
+                    safe_sectors = force_list(row['섹터'])
+                    for sec in safe_sectors:
+                        if sec == '개별주' and len(safe_sectors) > 1: continue 
                         if sec not in theme_counts: theme_counts[sec] = []
                         theme_counts[sec].append(row)
                 
-                # 종목 수가 많은 테마 -> 거래대금이 큰 테마 순으로 정렬
                 sorted_themes = sorted(theme_counts.items(), key=lambda x: (len(x[1]), sum(r['거래대금_num'] for r in x[1])), reverse=True)
                 
                 for s_name, stocks_list in sorted_themes:
-                    # 해당 테마의 종목들을 등락률 순으로 정렬
                     stocks_df = pd.DataFrame(stocks_list).sort_values('등락률_num', ascending=False)
                     
                     with st.expander(f"**{s_name}** ({len(stocks_df)})", expanded=True):
@@ -526,7 +523,6 @@ with tab_scanner:
                             ldr = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
                             rv = s_row["등락률_num"]
                             
-                            # 💡 우측 섹터 리스트 10% 초록색 로직 적용
                             rate_color = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#334155")
                             
                             st.markdown(f'''
