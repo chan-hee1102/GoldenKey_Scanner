@@ -8,7 +8,7 @@ import os
 import re
 import json
 import google.generativeai as genai
-from urllib.parse import quote  # 💡 네이버 금융 검색용 인코딩 모듈 추가
+from urllib.parse import quote
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -69,7 +69,6 @@ st.markdown(
         border-left: 5px solid #e2e8f0;
     }
 
-    /* 구역별 비율 조정 */
     .left-zone { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; }
     .center-zone { display: flex; align-items: center; gap: 8px; flex: 0 1 auto; margin-left: 10px; }
     .right-zone { display: flex; align-items: center; gap: 15px; flex: 1; justify-content: flex-end; }
@@ -251,11 +250,13 @@ def get_global_market_status():
     indices = []
     themes = []
     idx_map = {"나스닥 100": "^NDX", "S&P 500": "^GSPC", "다우존스": "^DJI"}
+    
     try:
         for name, tk in idx_map.items():
             v, r = fetch_robust_finance(tk)
             indices.append({"name": name, "value": v, "delta": r})
             time.sleep(0.2)
+        
         sox_v, sox_r = fetch_sox_stable()
         if not sox_v: sox_v, sox_r = fetch_robust_finance("^SOX")
         indices.append({"name": "필라 반도체", "value": sox_v, "delta": sox_r})
@@ -265,6 +266,7 @@ def get_global_market_status():
             _, r_etf = fetch_robust_finance(tk)
             themes.append({"name": name, "delta": r_etf, "color": SECTOR_COLORS.get(sector, "#ffffff")})
             time.sleep(0.2)
+            
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
         st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 지수 및 전력/원전 테마 복구가 완료되었습니다."
@@ -283,6 +285,7 @@ def update_theme_db():
             soup = BeautifulSoup(res.text, 'html.parser')
             links = soup.select('.type_1.theme td.col_type1 a')
             for link in links: theme_links.append((link.text.strip(), "https://finance.naver.com" + link['href']))
+        
         total_themes = len(theme_links)
         for idx, (theme_name, link) in enumerate(theme_links):
             status_text.text(f"🚀 테마 DB 갱신 중... ({idx+1}/{total_themes})")
@@ -296,6 +299,7 @@ def update_theme_db():
                     if theme_name not in theme_dict[name]: theme_dict[name] += f", {theme_name}"
                 else: theme_dict[name] = theme_name
             time.sleep(0.02)
+            
         pd.DataFrame(list(theme_dict.items()), columns=['종목명', '테마']).to_csv(THEME_DB_FILE, index=False, encoding='utf-8-sig')
         status_text.success("✅ 테마 DB 업데이트 완료!"); time.sleep(1); st.rerun()
     except Exception as e: status_text.error(f"오류: {e}")
@@ -396,7 +400,7 @@ def perform_batch_analysis(news_map):
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
-    # 💡 완벽 수정: URL 문자열에 불필요하게 포함되었던 마크다운 링크 기호([ ], ( ))를 완전히 제거했습니다.
+    # 💡 완벽 수정: URL 양끝에 어떤 따옴표(')나 마크다운 찌꺼기도 들어가지 않은 순수 문자열입니다.
     url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
     
     headers = {
