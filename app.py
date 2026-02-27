@@ -45,7 +45,7 @@ st.markdown(
         background: #f1f5f9;
     }
 
-    /* 🌟 지수 폰트 크기 슬림화 */
+    /* 🌟 지수 폰트 크기 슬림화 및 한국식 등락 색상 강제 (상승: 빨강, 하락: 파랑) */
     [data-testid="stMetricValue"] {
         font-size: 1.25rem !important;
         font-weight: 800 !important;
@@ -54,6 +54,22 @@ st.markdown(
         font-size: 0.8rem !important;
         color: #64748b !important;
         margin-bottom: -5px !important;
+    }
+    
+    [data-testid="stMetricDelta"] svg[data-testid="stMetricDeltaIcon-Up"] {
+        color: #ef4444 !important;
+        fill: #ef4444 !important;
+    }
+    [data-testid="stMetricDelta"]:has(svg[data-testid="stMetricDeltaIcon-Up"]) > div {
+        color: #ef4444 !important;
+    }
+    
+    [data-testid="stMetricDelta"] svg[data-testid="stMetricDeltaIcon-Down"] {
+        color: #3b82f6 !important;
+        fill: #3b82f6 !important;
+    }
+    [data-testid="stMetricDelta"]:has(svg[data-testid="stMetricDeltaIcon-Down"]) > div {
+        color: #3b82f6 !important;
     }
 
     /* 🌟 실시간 주도주 리스트 디자인 */
@@ -218,7 +234,8 @@ def fetch_sox_stable():
         for row in table.find_all('tr'):
             tds = row.find_all('td')
             if len(tds) > 3 and "필라델피아 반도체" in tds[0].text:
-                return tds[1].text.strip(), tds[3].text.strip()
+                rate_text = tds[3].text.strip().replace(' ', '')
+                return tds[1].text.strip(), rate_text
         return None, None
     except: return None, None
 
@@ -231,7 +248,11 @@ def fetch_robust_finance(ticker):
         val_tag = soup.find("fin-streamer", {"data-field": "regularMarketPrice"})
         rate_tag = soup.find("fin-streamer", {"data-field": "regularMarketChangePercent"})
         if val_tag and val_tag.text != "0.00" and val_tag.text != "":
-            return val_tag.text, rate_tag.text.strip()
+            # 괄호 제거 및 부호 명확화
+            rate_text = rate_tag.text.strip().replace('(', '').replace(')', '')
+            if not rate_text.startswith('-') and not rate_text.startswith('+') and rate_text != "0.00%":
+                rate_text = f"+{rate_text}"
+            return val_tag.text, rate_text
     except: pass
     try:
         google_ticker = ticker.replace('^', '.')
@@ -242,6 +263,8 @@ def fetch_robust_finance(ticker):
         g_soup = BeautifulSoup(g_res.text, 'html.parser')
         g_val = g_soup.select_one(".YMlKec.fxKb9b").text
         g_rate = g_soup.select_one(".Jw796").text.replace('(', '').replace(')', '').strip()
+        if not g_rate.startswith('-') and not g_rate.startswith('+') and g_rate != "0.00%":
+            g_rate = f"+{g_rate}"
         if g_val: return g_val, g_rate
     except: pass
     return "N/A", "0.00%"
@@ -395,7 +418,6 @@ def perform_batch_analysis(news_map):
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
-    # 💡 [핵심 방어막]: 에디터가 절대 URL로 인식하지 못하게 문자열을 분리해서 조립합니다!
     protocol = "https"
     host = "finance.naver.com"
     path = "sise/sise_quant.naver"
@@ -451,12 +473,13 @@ with st.sidebar:
         get_global_market_status()
     if st.session_state.global_indices:
         for idx in st.session_state.global_indices:
-            st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'], delta_color="normal" if '+' in str(idx['delta']) else "inverse")
+            # 💡 수정 포인트: delta_color 파라미터를 지우고 CSS에 색상을 위임합니다.
+            st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'])
     st.markdown("---")
     st.subheader("🇺🇸 미국 테마(ETF) 흐름")
     if st.session_state.global_themes:
         for t in st.session_state.global_themes:
-            v_c = "#ef4444" if '+' in str(t['delta']) else "#2563eb"
+            v_c = "#ef4444" if '+' in str(t['delta']) else "#3b82f6"
             st.markdown(f'<div class="sidebar-theme-row" style="background-color: {t["color"]};"><span style="color: #1e293b;">{t["name"]}</span><span style="color: {v_c};">{t["delta"]}</span></div>', unsafe_allow_html=True)
     st.info(f"📍 **전문가 브리핑:**\n{st.session_state.global_briefing}")
 
