@@ -30,7 +30,7 @@ else:
     model = None
 
 # ==========================================
-# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS
+# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS 
 # ==========================================
 st.markdown(
     """
@@ -45,7 +45,7 @@ st.markdown(
         background: #f1f5f9;
     }
 
-    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) */
+    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) 🌟 */
     [data-testid="stMetricValue"] {
         font-size: 1.25rem !important;
         font-weight: 800 !important;
@@ -56,7 +56,7 @@ st.markdown(
         margin-bottom: -5px !important;
     }
 
-    /* 🌟 실시간 주도주 리스트 디자인 */
+    /* 🌟 실시간 주도주 리스트 디자인 (무삭제 유지) 🌟 */
     .stock-card {
         background: white;
         border-radius: 8px;
@@ -95,7 +95,7 @@ st.markdown(
         white-space: nowrap;
     }
 
-    /* 🌟 우측 섹터 리스트 칼정렬 */
+    /* 🌟 우측 섹터 리스트 칼정렬 (일직선 정렬 로직) 🌟 */
     .sector-item {
         font-size: 0.85rem;
         color: #334155;
@@ -148,7 +148,7 @@ st.markdown(
         flex-shrink: 0;
     }
 
-    /* 🌟 정밀 분석 탭 전용 프리미엄 카드 스타일 */
+    /* 🌟 정밀 분석 탭 전용 프리미엄 카드 스타일 🌟 */
     .sector-group-title { font-size: 1.2rem; font-weight: 800; color: #1e293b; margin-top: 25px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 2px solid #cbd5e1; }
     .analysis-card {
         background: #ffffff; border-radius: 10px; padding: 16px; margin-bottom: 12px;
@@ -401,9 +401,9 @@ def perform_batch_analysis(news_map):
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
+    # 💡 URL 문자열에 섞여 들어간 불필요한 마크다운 기호([ ] 및 ( ))를 완벽히 제거했습니다.
     url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
     
-    # 💡 1차 문제 해결: 국내 스캐너에도 강력한 브라우저 위장 추가
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Referer': '[https://finance.naver.com/](https://finance.naver.com/)'
@@ -415,7 +415,6 @@ def fetch_market_data(sosok, market_name):
         table = soup.find('table', {'class': 'type_2'})
         
         if not table:
-            # 네이버 접근 차단 시 터미널 로그 및 빈 데이터 반환
             st.error(f"[에러] 네이버 금융 접근 차단됨 ({market_name})")
             return pd.DataFrame()
             
@@ -482,7 +481,6 @@ with tab_scanner:
                 df_q = fetch_market_data(1, '코스닥')
                 df = pd.concat([df_k, df_q], ignore_index=True)
                 
-                # 💡 2차 문제 해결: 데이터를 못 가져왔거나 필터링 후 텅 빈 경우 경고창 노출
                 if df.empty:
                     st.warning("⚠️ 네이버 금융에서 데이터를 가져오지 못했습니다. (접속 차단 또는 서버 응답 없음)")
                 else:
