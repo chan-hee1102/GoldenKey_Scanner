@@ -8,7 +8,7 @@ import os
 import re
 import json
 import google.generativeai as genai
-from urllib.parse import quote  # 💡 네이버 금융 검색용 인코딩 모듈 추가
+from urllib.parse import quote
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -45,7 +45,7 @@ st.markdown(
         background: #f1f5f9;
     }
 
-    /* 🌟 지수 폰트 크기 슬림화 (시각적 균형 최적화) */
+    /* 🌟 지수 폰트 크기 슬림화 */
     [data-testid="stMetricValue"] {
         font-size: 1.25rem !important;
         font-weight: 800 !important;
@@ -202,14 +202,14 @@ SECTOR_COLORS = {
 
 CUSTOM_SECTOR_MAP = {"온코닉테라퓨틱스": "바이오", "현대ADM": "바이오"}
 
-# --- [2] 미 증시 엔진: 네이버 금융 통합 및 듀얼 크롤링 로직 ---
+# --- [2] 미 증시 엔진 (에디터 간섭 방지 URL 분리) ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_sox_stable():
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    url = "https://finance.naver.com/world/"
+    url = "https://" + "finance.naver.com/world/"
     try:
         res = requests.get(url, headers=headers, timeout=10)
         res.encoding = 'euc-kr'
@@ -225,7 +225,7 @@ def fetch_sox_stable():
 def fetch_robust_finance(ticker):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
-        url = f"https://finance.yahoo.com/quote/{ticker}"
+        url = "https://" + f"finance.yahoo.com/quote/{ticker}"
         res = requests.get(url, headers=headers, timeout=12)
         soup = BeautifulSoup(res.text, 'html.parser')
         val_tag = soup.find("fin-streamer", {"data-field": "regularMarketPrice"})
@@ -237,7 +237,7 @@ def fetch_robust_finance(ticker):
         google_ticker = ticker.replace('^', '.')
         mkt = "INDEXNASDAQ" if "NDX" in ticker or "SOX" in ticker else "INDEXSP"
         if "DJI" in ticker: mkt = "INDEXDJX"
-        g_url = f"https://www.google.com/finance/quote/{google_ticker}:{mkt}"
+        g_url = "https://" + f"www.google.com/finance/quote/{google_ticker}:{mkt}"
         g_res = requests.get(g_url, headers=headers, timeout=12)
         g_soup = BeautifulSoup(g_res.text, 'html.parser')
         g_val = g_soup.select_one(".YMlKec.fxKb9b").text
@@ -280,7 +280,7 @@ def update_theme_db():
     try:
         theme_links = []
         for i in range(1, 8):
-            url = f"https://finance.naver.com/sise/theme.naver?&page={i}"
+            url = "https://" + f"finance.naver.com/sise/theme.naver?&page={i}"
             res = session.get(url, timeout=5); res.encoding = 'euc-kr'
             soup = BeautifulSoup(res.text, 'html.parser')
             links = soup.select('.type_1.theme td.col_type1 a')
@@ -308,17 +308,15 @@ def update_theme_db():
 
 def fetch_stock_news_headlines(stock_name):
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
-        'Referer': 'https://finance.naver.com/'
+        'Referer': "https://" + "finance.naver.com/"
     }
-    
     titles = []
-    
     try:
         encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
-        fin_url = f"https://finance.naver.com/news/news_search.naver?q={encoded_kw}"
+        fin_url = "https://" + f"finance.naver.com/news/news_search.naver?q={encoded_kw}"
         res_fin = requests.get(fin_url, headers=headers, timeout=10)
         res_fin.encoding = 'euc-kr' 
         
@@ -328,19 +326,18 @@ def fetch_stock_news_headlines(stock_name):
             for tag in tags[:10]:
                 text = tag.text.strip()
                 if text: titles.append(text)
-    except:
-        pass 
+    except: pass 
 
     if not titles:
         try:
-            gen_url = "https://search.naver.com/search.naver"
+            gen_url = "https://" + "search.naver.com/search.naver"
             params = {'where': 'news', 'query': f'특징주 {stock_name}', 'sort': '0'} 
-            headers['Referer'] = 'https://search.naver.com/' 
+            headers['Referer'] = "https://" + "search.naver.com/"
             
             res_gen = requests.get(gen_url, params=params, headers=headers, timeout=10)
             if res_gen.status_code == 200:
                 soup_gen = BeautifulSoup(res_gen.text, 'html.parser')
-                selectors = [".news_tit", ".title_link", "a.news_tit", ".dsc_txt_tit", ".api_txt_lines", ".link_txt"]
+                selectors = [".news_tit", ".title_link", "a.news_tit", ".dsc_txt_tit", ".api_txt_lines"]
                 for sel in selectors:
                     tags = soup_gen.select(sel)
                     if tags: 
@@ -348,16 +345,14 @@ def fetch_stock_news_headlines(stock_name):
                             text = tag.text.strip()
                             if text: titles.append(text)
                         break 
-        except:
-            pass
+        except: pass
             
     if not titles:
         return [f"[에러] 네이버 검색 전면 차단됨 (1, 2차 사냥터 모두 실패)"]
         
     unique_titles = []
     for t in titles:
-        if t not in unique_titles:
-            unique_titles.append(t)
+        if t not in unique_titles: unique_titles.append(t)
             
     return unique_titles[:10]
 
@@ -400,18 +395,20 @@ def perform_batch_analysis(news_map):
 # --- [5] 국내 데이터 크롤링 및 분류 로직 ---
 
 def fetch_market_data(sosok, market_name):
-    # 💡 5차 문제 해결: URL 문자열에 숨어있을 수 있는 유령 문자(Zero-width space)를 강제로 제거하는 철통 방어 로직 추가!
-    raw_url = f"[https://finance.naver.com/sise/sise_quant.naver?sosok=](https://finance.naver.com/sise/sise_quant.naver?sosok=){sosok}"
-    clean_url = raw_url.encode('ascii', 'ignore').decode('ascii').strip()
+    # 💡 [핵심 방어막]: 에디터가 절대 URL로 인식하지 못하게 문자열을 분리해서 조립합니다!
+    protocol = "https"
+    host = "finance.naver.com"
+    path = "sise/sise_quant.naver"
+    
+    url = f"{protocol}://{host}/{path}?sosok={sosok}"
+    referer_url = f"{protocol}://{host}/"
     
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Referer': '[https://finance.naver.com/](https://finance.naver.com/)'
+        'Referer': referer_url
     }
-    
     try:
-        # 유령 문자가 완벽히 제거된 clean_url을 사용하여 통신 시도
-        res = requests.get(clean_url, headers=headers, timeout=5)
+        res = requests.get(url, headers=headers, timeout=5)
         res.encoding = 'euc-kr'
         soup = BeautifulSoup(res.text, 'html.parser')
         table = soup.find('table', {'class': 'type_2'})
