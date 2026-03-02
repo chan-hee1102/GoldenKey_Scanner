@@ -29,7 +29,7 @@ else:
     model = None
 
 # ==========================================
-# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS (대폭 업그레이드)
+# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS
 # ==========================================
 st.markdown(
     """
@@ -259,7 +259,7 @@ def get_sector_color(sector_name):
     for key in SECTOR_COLORS:
         if key in sector_name:
             return SECTOR_COLORS[key]
-    return '#f1f5f9' # 개별주 및 기타 테마의 기본 고급스러운 회색
+    return '#f1f5f9' 
 
 def force_list(val):
     if isinstance(val, str):
@@ -270,26 +270,51 @@ def force_list(val):
         return [str(x) for x in val]
     return ["개별주"]
 
-# --- [2] 미 증시 엔진 ---
+# --- [2] 미 증시 엔진 (필라 반도체 지수 보강) ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_sox_stable():
+    """필라델피아 반도체 지수(SOX) 3단계 안정화 크롤러"""
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
-    url = "https://" + "finance.naver.com/world/"
+    
+    # [1단계] 인베스팅닷컴 상세 페이지
     try:
-        res = requests.get(url, headers=headers, timeout=10)
-        res.encoding = 'euc-kr'
+        url = "https://kr.investing.com/indices/phlx-semiconductor"
+        res = requests.get(url, headers=headers, timeout=7)
         soup = BeautifulSoup(res.text, 'html.parser')
-        table = soup.find('table', {'class': 'tbl_exchange'})
-        for row in table.find_all('tr'):
-            tds = row.find_all('td')
-            if len(tds) > 3 and "필라델피아 반도체" in tds[0].text:
-                rate_text = tds[3].text.strip().replace(' ', '')
-                return tds[1].text.strip(), rate_text
-        return None, None
-    except: return None, None
+        val = soup.select_one('[data-test="instrument-price-last"]').text
+        rate = soup.select_one('[data-test="instrument-price-change-percent"]').text
+        if val:
+            # 괄호 및 불필요한 기호 제거하여 Streamlit 색상 인식 최적화
+            clean_rate = rate.replace('(', '').replace(')', '').replace('%', '').strip()
+            if not clean_rate.startswith('-') and not clean_rate.startswith('+'):
+                clean_rate = f"+{clean_rate}"
+            return val, f"{clean_rate}%"
+    except: pass
+
+    # [2단계] 구글 파이낸스
+    try:
+        url = "https://www.google.com/finance/quote/SOX:INDEXNASDAQ"
+        res = requests.get(url, headers=headers, timeout=7)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        val = soup.select_one(".YMlKec.fxKb9b").text
+        rate = soup.select_one(".Jw796").text.replace('(', '').replace(')', '').strip()
+        if val: return val, rate
+    except: pass
+
+    # [3단계] 네이버 상세 지표
+    try:
+        url = "https://finance.naver.com/world/sise.naver?symbol=SPI@SOX"
+        res = requests.get(url, headers=headers, timeout=7)
+        soup = BeautifulSoup(res.text, 'html.parser')
+        val = soup.select_one("#last_price").text
+        rate = soup.select_one("#change_percent").text.strip()
+        if val: return val, rate
+    except: pass
+
+    return None, None
 
 def fetch_robust_finance(ticker):
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
@@ -305,19 +330,6 @@ def fetch_robust_finance(ticker):
                 rate_text = f"+{rate_text}"
             return val_tag.text, rate_text
     except: pass
-    try:
-        google_ticker = ticker.replace('^', '.')
-        mkt = "INDEXNASDAQ" if "NDX" in ticker or "SOX" in ticker else "INDEXSP"
-        if "DJI" in ticker: mkt = "INDEXDJX"
-        g_url = "https://" + f"www.google.com/finance/quote/{google_ticker}:{mkt}"
-        g_res = requests.get(g_url, headers=headers, timeout=12)
-        g_soup = BeautifulSoup(g_res.text, 'html.parser')
-        g_val = g_soup.select_one(".YMlKec.fxKb9b").text
-        g_rate = g_soup.select_one(".Jw796").text.replace('(', '').replace(')', '').strip()
-        if not g_rate.startswith('-') and not g_rate.startswith('+') and g_rate != "0.00%":
-            g_rate = f"+{g_rate}"
-        if g_val: return g_val, g_rate
-    except: pass
     return "N/A", "0.00%"
 
 def get_global_market_status():
@@ -331,8 +343,9 @@ def get_global_market_status():
             indices.append({"name": name, "value": v, "delta": r})
             time.sleep(0.2)
         
+        # 보강된 필라 반도체 로직 호출
         sox_v, sox_r = fetch_sox_stable()
-        if not sox_v: sox_v, sox_r = fetch_robust_finance("^SOX")
+        if not sox_v: sox_v, sox_r = "N/A", "0.00%"
         indices.append({"name": "필라 반도체", "value": sox_v, "delta": sox_r})
 
         etf_map = [("반도체 (SOXX)", "SOXX", "반도체"), ("로봇/AI (BOTZ)", "BOTZ", "로봇/AI"), ("2차전지 (LIT)", "LIT", "2차전지"), ("전력망 (GRID)", "GRID", "전력/원전"), ("원자력 (URA)", "URA", "전력/원전"), ("바이오 (IBB)", "IBB", "바이오")]
@@ -343,7 +356,7 @@ def get_global_market_status():
             
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
-        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 지수 및 전력/원전 테마 복구가 완료되었습니다."
+        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n글로벌 지표 수집 안정화가 완료되었습니다."
     except: st.session_state.global_briefing = "해외 서버 동기화 일시 지연 중"
 
 # --- [3] 💡 종목 정밀 분석 엔진 (Gemini) ---
@@ -431,7 +444,6 @@ def perform_batch_analysis(news_map):
         generation_config = genai.types.GenerationConfig(temperature=0.1, top_p=0.8)
         analysis_model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
         
-        # 💡 [프롬프트 핵심 개선] 스페이스X 등 메가 트렌드를 무조건 단일 명사로 통일하고 개별주 처리하지 않도록 규칙 대폭 강화
         prompt = f"""
         당신은 여의도 최고 수준의 프랍 트레이더이자 시장 트렌드 분석의 권위자입니다.
         아래 데이터는 오늘 시장에서 강한 수급(거래대금 상위 & 급등)이 들어온 주도주들의 뉴스 '제목'과 '본문 요약(내용)' 모음입니다.
@@ -439,15 +451,13 @@ def perform_batch_analysis(news_map):
         [데이터]
         {json.dumps(news_map, ensure_ascii=False)}
         
-        [전문가 테마 분류 지시사항 - 반드시 지킬 것]
+        [분석 지시사항 - 반드시 지킬 것]
         1. 대분류(Macro Theme) 및 핵심 명사 강제 통일: 시장의 큰 숲을 보기 위해 동의어나 하위 테마, 수식어는 다 떼어내고 가장 핵심이 되는 '1~5글자의 짧은 명사'로 통일하세요.
            - ❌ 나쁜 예: ["스페이스X 장비 공급", "스페이스X 투자", "태양광 및 재생에너지"]
-           - ⭕ 올바른 예: ["스페이스X", "신재생에너지", "전력", "2차전지", "로봇/AI", "반도체"]
+           - ⭕ 좋은 예: ["스페이스X", "신재생에너지", "전력", "2차전지", "로봇/AI", "반도체"]
         2. 글로벌 메가 테마 묶기 (절대 규칙): '스페이스X', '엔비디아', '테슬라' 등 시장을 지배하는 글로벌 기업 관련 이슈는 단순한 개별 계약이 아닙니다. 관련 종목들이 다 같이 오르는 '주도 테마'이므로, 절대로 뒤에 '(개별주)'를 붙이지 말고 명사("스페이스X") 하나로 통일해서 묶어주세요.
            - 아주IB투자(지분 투자), 서진시스템(장비 공급) 등 이유가 달라도 "스페이스X" 관련이면 무조건 ["스페이스X"] 로 통일하여 그룹화되게 하세요.
         3. 독립 태그 분리: 여러 테마 모멘텀이 겹칠 경우, 하나의 긴 문장으로 묶지 말고 각각 독립된 배열 요소로 쪼개세요.
-           - ❌ 나쁜 예: ["신재생에너지/AI데이터센터 냉각"]
-           - ⭕ 올바른 예: ["신재생에너지", "데이터센터"]
         4. 진짜 개별주 처리: 시장 주도 테마(섹터)나 글로벌 메가 테마에 전혀 속하지 않는, 해당 기업만의 지엽적이고 독자적인 호재(신규상장, 부지 개발, 코스닥 편입 등)만 "핵심이유(개별주)" 형태로 묶어주세요. 
            - ⭕ 올바른 예: ["성수동 부지 개발(개별주)"], ["코스닥150 편입(개별주)"]
         5. 시장 주도장세 브리핑 작성 (Macro 분석): 추출한 40개 종목의 태그들을 종합적으로 살펴보고, 오늘 어떤 테마들에 자금이 가장 많이 쏠렸는지(교집합이 많은 태그) 분석하여 "오늘 시장은 [A] 테마와 [B] 관련주가 시장을 이끌고 있습니다." 형태의 트레이더 브리핑을 2~3줄로 작성하세요. (단, '(개별주)' 태그는 브리핑에서 제외)
@@ -487,8 +497,9 @@ def perform_batch_analysis(news_map):
         """
         response = analysis_model.generate_content(prompt)
         raw_text = response.text.strip()
-        raw_text = re.sub(r"^```json\n?|^```\n?", "", raw_text) 
-        raw_text = re.sub(r"\n?```$", "", raw_text)
+        # JSON 파싱 안정화: 모든 백틱 및 부가 설명 제거 강화
+        raw_text = re.sub(r"^[^{]*", "", raw_text) 
+        raw_text = re.sub(r"[^}]*$", "", raw_text)
         
         parsed_json = json.loads(raw_text)
         briefing = parsed_json.get("시장브리핑", "오늘 시장의 주도 테마 브리핑을 생성하지 못했습니다.")
@@ -544,7 +555,6 @@ def format_volume_to_jo_eok(x_million):
 # --- [5] UI 레이아웃 구성 ---
 
 with st.sidebar:
-    # 🌟 사이드바 여백 정리
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
     st.markdown("<h2 style='font-size: 1.5rem; font-weight: 800; color: #0f172a; margin-bottom: 15px;'>🌐 글로벌 증시</h2>", unsafe_allow_html=True)
     if st.button("🚀 실시간 스캔", use_container_width=True, key="global_btn"):
