@@ -29,12 +29,12 @@ else:
     model = None
 
 # ==========================================
-# 🎨 [UI/UX] 딥 네이비(Slate) 소프트 다크 모드 커스텀 CSS
+# 🎨 [UI/UX] 프리미엄 대시보드 커스텀 CSS (대폭 업그레이드)
 # ==========================================
 st.markdown(
     """
     <style>
-    /* 웹 폰트 (Pretendard & Inter) - 쥬피터 노트북 폰트 탈피 */
+    /* 웹 폰트 (Pretendard & Inter 조합으로 모던하고 전문적인 느낌) */
     @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
     
@@ -42,114 +42,96 @@ st.markdown(
         font-family: 'Pretendard', 'Inter', sans-serif;
     }
 
-    /* 🌟 전체 배경 (너무 까맣지 않은 고급스러운 딥 슬레이트 네이비) */
-    .stApp, [data-testid="stAppViewContainer"] {
-        background-color: #0f172a !important; 
-    }
-    
-    /* 🌟 사이드바 가독성 완벽 해결 */
-    [data-testid="stSidebar"] {
-        background-color: #1e293b !important;
-        border-right: 1px solid rgba(255,255,255,0.05) !important;
-    }
-    [data-testid="stSidebar"] p, [data-testid="stSidebar"] h1, [data-testid="stSidebar"] h2, 
-    [data-testid="stSidebar"] h3, [data-testid="stSidebar"] div, [data-testid="stSidebar"] span {
-        color: #f8fafc !important; /* 사이드바 글씨 강제 화이트 */
-    }
-    [data-testid="stSidebar"] hr {
-        border-color: rgba(255,255,255,0.1) !important;
+    .stApp {
+        background-color: #f8fafc; /* 더 부드럽고 고급스러운 배경색 */
     }
 
-    /* 기본 텍스트 색상 방어 */
-    p, h1, h2, h3, h4, h5, h6, span {
-        color: #e2e8f0;
-    }
-
-    /* 상단 기본 헤더(선) 숨기기 (앱 느낌 강조) */
-    header[data-testid="stHeader"] {
-        background-color: transparent !important;
-    }
-
-    /* 🌟 상단 타이틀 고급화 (사이버틱한 네온 그라데이션) */
+    /* 🌟 상단 타이틀 고급화 (그라데이션 및 폰트 두께 조절) */
     .main-title {
-        font-size: 2.6rem;
-        font-weight: 900;
-        background: linear-gradient(90deg, #60a5fa 0%, #c084fc 100%);
+        font-size: 2.5rem;
+        font-weight: 800;
+        background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         margin-bottom: 5px;
         letter-spacing: -0.02em;
     }
     .sub-title {
-        font-size: 1.05rem;
-        color: #94a3b8 !important;
-        font-weight: 500;
+        font-size: 1rem;
+        color: #64748b;
+        font-weight: 600;
         margin-bottom: 25px;
     }
 
-    /* 🌟 핵심 CTA 버튼 (프로 터미널 버튼) */
-    div.stButton > button {
-        background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
-        color: white !important;
-        border: 1px solid #3b82f6 !important;
-        border-radius: 8px !important;
-        padding: 12px 24px !important;
-        font-size: 1.05rem !important;
-        font-weight: 700 !important;
-        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3) !important;
-        transition: all 0.2s ease-in-out !important;
-        width: 100% !important;
+    /* 🌟 핵심 CTA(Call To Action) 버튼 디자인 (실시간 스캔 버튼) */
+    div.stButton > button:first-child {
+        background-color: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px 24px;
+        font-size: 1.05rem;
+        font-weight: 700;
+        box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2), 0 2px 4px -1px rgba(37, 99, 235, 0.1);
+        transition: all 0.2s ease-in-out;
+        width: 100%;
+        margin-bottom: 15px;
     }
-    div.stButton > button:hover {
-        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
-        box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5) !important;
-        transform: translateY(-2px) !important;
+    div.stButton > button:first-child:hover {
+        background-color: #1d4ed8;
+        box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3), 0 4px 6px -2px rgba(37, 99, 235, 0.15);
+        transform: translateY(-2px);
     }
-    div.stButton > button p { color: white !important; font-weight: 700 !important; font-size: 1.05rem !important;}
+    div.stButton > button:first-child p {
+        font-size: 1.05rem;
+        font-weight: 700;
+    }
 
-    /* 🌟 시장 브리핑 박스 */
+    /* 🌟 시장 브리핑 박스 스타일 (전문 리포트 느낌) */
     .briefing-box {
-        background: #1e293b;
-        border: 1px solid rgba(255,255,255,0.05);
-        border-left: 4px solid #60a5fa;
+        background: white;
+        border-top: 4px solid #3b82f6;
         padding: 20px 24px;
         border-radius: 10px;
         margin-bottom: 25px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+        font-size: 1rem;
+        color: #334155;
+        line-height: 1.6;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
     }
     .briefing-title {
         font-weight: 800;
         font-size: 1.15rem;
-        color: #f8fafc !important;
+        color: #0f172a;
         margin-bottom: 12px;
         display: flex;
         align-items: center;
         gap: 8px;
     }
-    .briefing-content { color: #cbd5e1 !important; line-height: 1.6; font-size: 1rem; }
 
-    /* 🌟 실시간 주도주 리스트 카드 */
+    /* 🌟 실시간 주도주 리스트 카드 디자인 */
     .stock-card {
-        background: #1e293b;
+        background: white;
         border-radius: 10px;
         padding: 14px 18px;
         margin-bottom: 10px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border: 1px solid rgba(255,255,255,0.05);
-        transition: transform 0.1s ease, background 0.2s ease;
+        box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        border-left: 5px solid #cbd5e1; /* 기본 보더 컬러 */
+        transition: transform 0.1s ease;
     }
     .stock-card:hover {
-        transform: translateX(3px);
-        background: #27354f;
+        transform: translateX(2px);
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
 
     .left-zone { display: flex; align-items: center; gap: 10px; flex: 0 1 auto; }
     .center-zone { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; margin-left: 15px; flex-wrap: wrap; }
     .right-zone { display: flex; align-items: center; gap: 18px; flex: 1; justify-content: flex-end; }
 
-    .stock-name { font-weight: 800; font-size: 1.15rem; color: #f8fafc !important; white-space: nowrap; letter-spacing: -0.01em; }
+    .stock-name { font-weight: 800; font-size: 1.1rem; color: #1e293b; white-space: nowrap; letter-spacing: -0.01em; }
     
     .market-tag { 
         font-size: 0.7rem; 
@@ -158,75 +140,76 @@ st.markdown(
         border-radius: 6px;
         white-space: nowrap;
     }
-    .market-kospi { background-color: rgba(59, 130, 246, 0.2); color: #93c5fd !important; border: 1px solid rgba(59, 130, 246, 0.3); }
-    .market-kosdaq { background-color: rgba(239, 68, 68, 0.15); color: #fca5a5 !important; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .market-kospi { background-color: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+    .market-kosdaq { background-color: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
 
-    /* 테마 뱃지 기본 틀 */
     .sector-badge {
         padding: 4px 10px;
         border-radius: 20px;
         font-size: 0.75rem;
         font-weight: 700;
+        border: 1px solid rgba(0,0,0,0.05);
         white-space: nowrap;
-        border: 1px solid transparent;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.5);
     }
 
-    /* 🌟 지표 텍스트 가독성 확보 */
-    [data-testid="stMetricValue"] { font-size: 1.5rem !important; font-weight: 800 !important; color: #f8fafc !important; }
-    [data-testid="stMetricLabel"] { font-size: 0.9rem !important; font-weight: 600 !important; color: #94a3b8 !important; margin-bottom: -2px !important; }
+    /* 🌟 지수 폰트 크기 슬림화 및 한국식 등락 색상 강제 */
+    [data-testid="stMetricValue"] { font-size: 1.4rem !important; font-weight: 800 !important; color: #0f172a !important; }
+    [data-testid="stMetricLabel"] { font-size: 0.85rem !important; font-weight: 600 !important; color: #64748b !important; margin-bottom: -2px !important; }
     
     [data-testid="stMetricDelta"] svg[data-testid="stMetricDeltaIcon-Up"] { color: #ef4444 !important; fill: #ef4444 !important; }
-    [data-testid="stMetricDelta"]:has(svg[data-testid="stMetricDeltaIcon-Up"]) > div { color: #ef4444 !important; font-weight: 800 !important; text-shadow: 0 0 5px rgba(239,68,68,0.4); }
+    [data-testid="stMetricDelta"]:has(svg[data-testid="stMetricDeltaIcon-Up"]) > div { color: #ef4444 !important; font-weight: 700 !important; }
     
     [data-testid="stMetricDelta"] svg[data-testid="stMetricDeltaIcon-Down"] { color: #3b82f6 !important; fill: #3b82f6 !important; }
-    [data-testid="stMetricDelta"]:has(svg[data-testid="stMetricDeltaIcon-Down"]) > div { color: #3b82f6 !important; font-weight: 800 !important; text-shadow: 0 0 5px rgba(59,130,246,0.4); }
+    [data-testid="stMetricDelta"]:has(svg[data-testid="stMetricDeltaIcon-Down"]) > div { color: #3b82f6 !important; font-weight: 700 !important; }
 
-    /* 🌟 우측 주도 섹터 아코디언(Expander) 다크모드화 */
+    /* 🌟 우측 주도 섹터 아코디언(Expander) 고급화 */
     div[data-testid="stExpander"] { 
-        border: 1px solid rgba(255,255,255,0.08) !important; 
+        border: 1px solid #e2e8f0 !important; 
         border-radius: 8px !important; 
-        background: #1e293b !important;
+        background: white !important;
         margin-bottom: 8px !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
     }
     div[data-testid="stExpander"] summary { 
         padding: 10px 15px !important; 
-        background-color: #161e2e !important; 
+        background-color: #f8fafc !important; 
         border-radius: 8px !important;
     }
-    div[data-testid="stExpander"] summary p { font-weight: 800 !important; font-size: 0.95rem !important; color: #f8fafc !important; }
-    div[data-testid="stExpander"] summary svg { color: #94a3b8 !important; }
+    div[data-testid="stExpander"] summary p { font-weight: 800 !important; font-size: 0.95rem !important; color: #1e293b !important; }
     
     .sector-item {
         font-size: 0.9rem;
+        color: #334155;
         padding: 8px 10px;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        border-bottom: 1px dashed rgba(255,255,255,0.1);
+        border-bottom: 1px dashed #e2e8f0;
         width: 100%;
     }
     .sector-item:last-child { border-bottom: none; }
 
     .sector-item-left { display: flex; align-items: center; flex: 1; overflow: hidden; }
-    .sector-stock-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #e2e8f0; }
+    .sector-stock-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .sector-item-right { display: flex; align-items: center; justify-content: flex-end; }
     
     .val-rate { width: 65px; text-align: right; font-weight: 800; margin-right: 12px; }
-    .val-vol { width: 75px; text-align: right; color: #94a3b8 !important; font-size: 0.8rem; font-weight: 600; }
+    .val-vol { width: 75px; text-align: right; color: #64748b; font-size: 0.8rem; font-weight: 600; }
 
     .leader-label {
         font-size: 0.65rem;
         background: #ef4444;
-        color: white !important;
+        color: white;
         padding: 2px 6px;
         border-radius: 4px;
         margin-right: 8px;
         flex-shrink: 0;
         font-weight: 800;
-        box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);
+        letter-spacing: -0.02em;
     }
 
-    /* 사이드바 테마 아이템 스타일 (다크 카드형) */
+    /* 사이드바 테마 아이템 스타일 (카드형) */
     .sidebar-theme-row {
         display: flex;
         justify-content: space-between;
@@ -235,8 +218,8 @@ st.markdown(
         margin-bottom: 8px;
         border-radius: 8px;
         font-weight: 700;
-        background: rgba(0,0,0,0.2);
-        border: 1px solid rgba(255,255,255,0.05);
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        border: 1px solid rgba(0,0,0,0.05);
     }
     
     /* 탭 메뉴 디자인 */
@@ -244,19 +227,6 @@ st.markdown(
         font-family: 'Pretendard', sans-serif !important;
         font-weight: 700 !important;
         font-size: 1.05rem !important;
-        color: #94a3b8 !important;
-    }
-    button[data-baseweb="tab"][aria-selected="true"] {
-        color: #f8fafc !important;
-        border-bottom-color: #60a5fa !important;
-    }
-    
-    /* 상세 뉴스 탭 내 텍스트 가독성 */
-    .analysis-card {
-        background: #1e293b; border-radius: 12px; padding: 22px; margin-bottom: 20px; 
-        border-left: 4px solid #3b82f6; border-right: 1px solid rgba(255,255,255,0.05); 
-        border-top: 1px solid rgba(255,255,255,0.05); border-bottom: 1px solid rgba(255,255,255,0.05); 
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     }
     </style>
     """,
@@ -277,27 +247,19 @@ if 'news_payload' not in st.session_state: st.session_state.news_payload = {}
 # ==========================================
 # 🌟 전역 설정 (섹터 색상 동기화 및 헬퍼 함수)
 # ==========================================
-def get_sector_style(sector_name):
-    # 다크모드에 맞는 형광(Neon) 글래스모피즘 스타일 매핑
-    color_map = {
-        '반도체': ('#93c5fd', '#3b82f6'), '로봇/AI': ('#c4b5fd', '#8b5cf6'), 
-        '2차전지': ('#6ee7b7', '#10b981'), '배터리': ('#6ee7b7', '#10b981'),
-        '전력': ('#fde047', '#eab308'), '신재생에너지': ('#fde047', '#eab308'), 
-        '바이오': ('#fca5a5', '#ef4444'), 
-        '방산': ('#cbd5e1', '#64748b'), '우주항공': ('#cbd5e1', '#64748b'), 
-        '스페이스X': ('#d8b4fe', '#a855f7'),
-        '금융/지주': ('#d1d5db', '#64748b'), '자동차': ('#7dd3fc', '#3b82f6'), 
-        '현대차그룹': ('#67e8f9', '#06b6d4'), '철강': ('#94a3b8', '#475569')
-    }
-    
-    for key, (text_c, border_c) in color_map.items():
-        if key in sector_name and '개별주' not in sector_name:
-            # rgba 변환 로직 (Hex to RGBA)
-            r = int(border_c[1:3], 16); g = int(border_c[3:5], 16); b = int(border_c[5:7], 16)
-            return f"color: {text_c} !important; border-color: {border_c}; background: rgba({r}, {g}, {b}, 0.15);"
-            
-    # 개별주 및 기타 테마 디폴트 (고급스러운 회색 네온)
-    return "color: #cbd5e1 !important; border-color: #64748b; background: rgba(100, 116, 139, 0.15);"
+SECTOR_COLORS = {
+    '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', '배터리': '#d1fae5',
+    '전력': '#fef3c7', '신재생에너지': '#fef3c7', '바이오': '#fee2e2', 
+    '방산': '#f1f5f9', '우주항공': '#f1f5f9', '스페이스X': '#e2e8f0',
+    '금융/지주': '#f3f4f6', '자동차': '#e0f2fe', '현대차그룹': '#cffafe', '철강': '#f1f5f9',
+    '비만치료제': '#fce7f3', '가상화폐/블록체인': '#fef9c3', '조선': '#e0e7ff', '희토류': '#fef08a'
+}
+
+def get_sector_color(sector_name):
+    for key in SECTOR_COLORS:
+        if key in sector_name:
+            return SECTOR_COLORS[key]
+    return '#f1f5f9' # 개별주 및 기타 테마의 기본 고급스러운 회색
 
 def force_list(val):
     if isinstance(val, str):
@@ -376,7 +338,7 @@ def get_global_market_status():
         etf_map = [("반도체 (SOXX)", "SOXX", "반도체"), ("로봇/AI (BOTZ)", "BOTZ", "로봇/AI"), ("2차전지 (LIT)", "LIT", "2차전지"), ("전력망 (GRID)", "GRID", "전력/원전"), ("원자력 (URA)", "URA", "전력/원전"), ("바이오 (IBB)", "IBB", "바이오")]
         for name, tk, sector in etf_map:
             _, r_etf = fetch_robust_finance(tk)
-            themes.append({"name": name, "delta": r_etf}) 
+            themes.append({"name": name, "delta": r_etf, "color": SECTOR_COLORS.get(sector, "#ffffff")})
             time.sleep(0.2)
             
         st.session_state.global_indices = indices
@@ -595,8 +557,9 @@ def format_volume_to_jo_eok(x_million):
 # --- [5] UI 레이아웃 구성 ---
 
 with st.sidebar:
-    st.markdown("<div style='margin-bottom: 10px;'></div>", unsafe_allow_html=True)
-    st.markdown("<h2 style='font-size: 1.5rem; font-weight: 800; color: #f8fafc; margin-bottom: 15px;'>🌐 글로벌 증시</h2>", unsafe_allow_html=True)
+    # 🌟 사이드바 여백 정리
+    st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
+    st.markdown("<h2 style='font-size: 1.5rem; font-weight: 800; color: #0f172a; margin-bottom: 15px;'>🌐 글로벌 증시</h2>", unsafe_allow_html=True)
     if st.button("🚀 실시간 스캔", use_container_width=True, key="global_btn"):
         get_global_market_status()
     
@@ -605,17 +568,18 @@ with st.sidebar:
         for idx in st.session_state.global_indices:
             st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'])
             
-    st.markdown("<hr style='margin: 20px 0; border-color: rgba(255,255,255,0.1);'>", unsafe_allow_html=True)
-    st.markdown("<h3 style='font-size: 1.1rem; font-weight: 800; color: #f8fafc; margin-bottom: 15px;'>🇺🇸 미국 테마(ETF) 흐름</h3>", unsafe_allow_html=True)
+    st.markdown("<hr style='margin: 20px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 1.1rem; font-weight: 800; color: #0f172a; margin-bottom: 15px;'>🇺🇸 미국 테마(ETF) 흐름</h3>", unsafe_allow_html=True)
     
     if st.session_state.global_themes:
         for t in st.session_state.global_themes:
-            v_c = "#ff4d4d" if '+' in str(t['delta']) else "#3b82f6"
-            st.markdown(f'<div class="sidebar-theme-row"><span style="color: #cbd5e1;">{t["name"]}</span><span style="color: {v_c}; font-weight: 800; text-shadow: 0 0 5px {v_c}66;">{t["delta"]}</span></div>', unsafe_allow_html=True)
+            v_c = "#ef4444" if '+' in str(t['delta']) else "#3b82f6"
+            st.markdown(f'<div class="sidebar-theme-row" style="background-color: {t["color"]};"><span style="color: #1e293b;">{t["name"]}</span><span style="color: {v_c};">{t["delta"]}</span></div>', unsafe_allow_html=True)
             
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
-    st.markdown(f"<div style='color: #94a3b8; font-size: 0.85rem; line-height: 1.4;'>📍 <b>시스템 상태:</b><br>{st.session_state.global_briefing}</div>", unsafe_allow_html=True)
+    st.info(f"📍 **시스템 상태:**\n{st.session_state.global_briefing}")
 
+# 🌟 메인 타이틀 고급화 적용
 st.markdown("<div class='main-title'>🔑 Golden Key Pro</div>", unsafe_allow_html=True)
 st.markdown("<div class='sub-title'>탑티어 퀀트 트레이딩 & 실시간 주도주 분석 대시보드</div>", unsafe_allow_html=True)
 
@@ -624,7 +588,7 @@ tab_scanner, tab_analysis = st.tabs(["🚀 실시간 주도주 스캐너", "📰
 with tab_scanner:
     col_main, col_summary = st.columns([7, 3])
     with col_summary:
-        st.markdown("<h3 style='font-size: 1.3rem; font-weight: 800; margin-bottom: 15px; color: #f8fafc;'>🏆 주도 섹터 랭킹</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-size: 1.3rem; font-weight: 800; margin-bottom: 15px; color: #0f172a;'>🏆 주도 섹터 랭킹</h3>", unsafe_allow_html=True)
         summary_placeholder = st.empty()
         
     with col_main:
@@ -676,7 +640,7 @@ with tab_scanner:
             st.markdown(f'''
             <div class="briefing-box">
                 <div class="briefing-title">🎙️ AI 트레이더의 오늘의 시장 브리핑</div>
-                <div class="briefing-content">{st.session_state.market_briefing}</div>
+                {st.session_state.market_briefing}
             </div>
             ''', unsafe_allow_html=True)
 
@@ -685,13 +649,11 @@ with tab_scanner:
                 badges_html = ""
                 safe_sectors = force_list(row['섹터'])
                 for sec in safe_sectors:
-                    style = get_sector_style(sec)
-                    badges_html += f'<span class="sector-badge" style="{style}">{sec}</span>'
+                    bg = get_sector_color(sec)
+                    badges_html += f'<span class="sector-badge" style="background: {bg}; color: #1e293b;">{sec}</span>'
                 
-                rv = row['등락률_num']
-                rt_c = "#ff4d4d" if rv >= 20.0 else ("#ef4444" if rv >= 10.0 else "#cbd5e1")
-                border_c = "#ff4d4d" if rv >= 20.0 else ("#3b82f6" if rv >= 10.0 else "#475569")
-                glow_fx = f"text-shadow: 0 0 10px {rt_c}88;" if rv >= 10.0 else ""
+                rv = row['등락률_num']; rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1e293b")
+                border_c = "#3b82f6" if rv >= 20.0 else ("#10b981" if rv >= 10.0 else "#cbd5e1") # 등락률에 따라 카드 보더 컬러 변경
                 
                 st.markdown(f'''
                 <div class="stock-card" style="border-left-color: {border_c};">
@@ -701,8 +663,8 @@ with tab_scanner:
                     </div>
                     <div class="center-zone">{badges_html}</div>
                     <div class="right-zone">
-                        <span style="color: {rt_c}; font-weight: 800; font-size: 1.25rem; min-width: 75px; text-align: right; {glow_fx}">+{rv}%</span>
-                        <span class="stock-vol" style="color: #94a3b8; font-size: 0.85rem; font-weight: 600;">{format_volume_to_jo_eok(row["거래대금_num"])}</span>
+                        <span style="color: {rt_c}; font-weight: 800; font-size: 1.15rem; min-width: 70px; text-align: right;">+{rv}%</span>
+                        <span class="stock-vol">{format_volume_to_jo_eok(row["거래대금_num"])}</span>
                     </div>
                 </div>
                 ''', unsafe_allow_html=True)
@@ -727,25 +689,24 @@ with tab_scanner:
                             ldr = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
                             rv = s_row["등락률_num"]
                             
-                            rate_color = "#ff4d4d" if rv >= 20.0 else ("#ef4444" if rv >= 10.0 else "#cbd5e1")
-                            glow_fx = f"text-shadow: 0 0 5px {rate_color}66;" if rv >= 10.0 else ""
+                            rate_color = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#334155")
                             
                             st.markdown(f'''
                             <div class="sector-item">
                                 <div class="sector-item-left">{ldr}<span class="sector-stock-name">{s_row["종목명"]}</span></div>
                                 <div class="sector-item-right">
-                                    <span class="val-rate" style="color:{rate_color}; {glow_fx}">+{rv}%</span>
+                                    <span class="val-rate" style="color:{rate_color};">+{rv}%</span>
                                     <span class="val-vol">{format_volume_to_jo_eok(s_row["거래대금_num"])}</span>
                                 </div>
                             </div>
                             ''', unsafe_allow_html=True)
 
 with tab_analysis:
-    st.markdown("<h3 style='font-size: 1.3rem; font-weight: 800; margin-bottom: 5px; color: #f8fafc;'>📰 AI 요약 및 종목별 특징주 리스트</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 style='font-size: 1.3rem; font-weight: 800; margin-bottom: 5px; color: #0f172a;'>📰 AI 요약 및 종목별 특징주 리스트</h3>", unsafe_allow_html=True)
     if not st.session_state.news_payload:
         st.info("👈 [실시간 주도주 스캐너] 탭에서 스캔을 먼저 실행해 주세요.")
     else:
-        st.markdown("<p style='color:#94a3b8; font-size: 0.95rem; margin-bottom: 25px;'>스캔된 주도주들의 AI 상승 요약, <b>논리적 추론 과정</b>, 그리고 최근 기사(본문 포함)를 상세하게 확인합니다.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#64748b; font-size: 0.95rem; margin-bottom: 25px;'>스캔된 주도주들의 AI 상승 요약, <b>논리적 추론 과정</b>, 그리고 최근 기사(본문 포함)를 상세하게 확인합니다.</p>", unsafe_allow_html=True)
         
         for stock, headlines in st.session_state.news_payload.items():
             ai_reason = "최근 뚜렷한 재료 발견 안됨"
@@ -758,23 +719,23 @@ with tab_analysis:
             
             news_li_html = ""
             if not headlines or headlines[0].startswith("[에러]"):
-                news_li_html = "<li style='color: #64748b;'>수집된 관련 특징주 기사가 없습니다.</li>"
+                news_li_html = "<li style='color: #94a3b8;'>수집된 관련 특징주 기사가 없습니다.</li>"
             else:
-                news_li_html = "".join([f"<li style='margin-bottom: 8px; line-height: 1.5; color: #cbd5e1;'>{h}</li>" for h in headlines])
+                news_li_html = "".join([f"<li style='margin-bottom: 8px; line-height: 1.5;'>{h}</li>" for h in headlines])
             
             card_html = f"""
-            <div class="analysis-card">
+            <div style="background: white; border-radius: 12px; padding: 22px; margin-bottom: 20px; border-left: 5px solid #3b82f6; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);">
                 <div style="display: flex; align-items: baseline; justify-content: space-between;">
-                    <h3 class="analysis-card-title" style="margin: 0; letter-spacing: -0.02em;">{stock}</h3>
+                    <h3 style="margin: 0; color: #0f172a; font-size: 1.4rem; font-weight: 800; letter-spacing: -0.02em;">{stock}</h3>
                 </div>
-                <div style="margin-top: 15px; padding: 14px 16px; border-radius: 8px; font-size: 1rem; font-weight: 700; line-height: 1.5;" class="analysis-reason">
+                <div style="margin-top: 15px; padding: 14px 16px; background: #eff6ff; border-radius: 8px; color: #1e40af; font-size: 1rem; font-weight: 700; line-height: 1.5;">
                     💡 AI 핵심 재료: {ai_reason}
                 </div>
-                <div style="margin-top: 8px; padding: 12px 16px; border-radius: 8px; font-size: 0.9rem; line-height: 1.5;" class="analysis-cot">
+                <div style="margin-top: 8px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; color: #475569; font-size: 0.9rem; line-height: 1.5;">
                     🧠 <b>AI 분석 추론:</b> {ai_cot}
                 </div>
-                <hr style="border: 0; height: 1px; background: rgba(255,255,255,0.1); margin: 20px 0;">
-                <ul class="analysis-news" style="margin:0; padding-left: 22px; font-size: 0.95rem; font-weight: 500;">
+                <hr style="border: 0; height: 1px; background: #e2e8f0; margin: 20px 0;">
+                <ul style="margin:0; padding-left: 22px; font-size: 0.95rem; color: #334155; font-weight: 500;">
                     {news_li_html}
                 </ul>
             </div>
