@@ -219,11 +219,11 @@ if 'news_payload' not in st.session_state: st.session_state.news_payload = {}
 # 🌟 전역 설정 (섹터 색상 동기화 및 헬퍼 함수)
 # ==========================================
 SECTOR_COLORS = {
-    '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', 
-    '전력/원전': '#fef3c7', '전력/신재생에너지': '#fef3c7', '바이오': '#fee2e2', 
-    '방산/우주': '#f1f5f9', '우주항공': '#f1f5f9', '스페이스X/우주항공': '#e2e8f0',
+    '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', '배터리': '#d1fae5',
+    '전력': '#fef3c7', '신재생에너지': '#fef3c7', '바이오': '#fee2e2', 
+    '방산': '#f1f5f9', '우주항공': '#f1f5f9', '스페이스X': '#e2e8f0',
     '금융/지주': '#f3f4f6', '자동차': '#e0f2fe', '현대차그룹': '#cffafe', '철강': '#f1f5f9',
-    '비만치료제': '#fce7f3', '가상화폐/블록체인': '#fef9c3', '조선': '#e0e7ff'
+    '비만치료제': '#fce7f3', '가상화폐/블록체인': '#fef9c3', '조선': '#e0e7ff', '희토류': '#fef08a'
 }
 
 def get_sector_color(sector_name):
@@ -328,7 +328,6 @@ def fetch_stock_news_headlines(stock_name):
     }
     titles = []
     
-    # 1. 메인 타겟: 네이버 금융 뉴스 (본문 요약 Snippet 추가)
     try:
         encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
         fin_url = f"https://finance.naver.com/news/news_search.naver?q={encoded_kw}"
@@ -345,7 +344,7 @@ def fetch_stock_news_headlines(stock_name):
                     if t_tag:
                         title = t_tag.text.strip()
                         summary = s_tag.text.strip().replace('\n', ' ').replace('\t', '') if s_tag else ""
-                        summary = re.sub(r'\|.*?$', '', summary).strip() # 언론사, 날짜 정보 클리닝
+                        summary = re.sub(r'\|.*?$', '', summary).strip() 
                         if summary:
                             news_str = f"제목: {title} (내용: {summary})"
                         else:
@@ -353,7 +352,6 @@ def fetch_stock_news_headlines(stock_name):
                         if news_str not in titles:
                             titles.append(news_str)
             else:
-                # 블록 구조가 안 보이면 제목만 가져오는 폴백
                 tags = soup_fin.select(".articleSubject a, .tit, dt a")
                 for tag in tags:
                     text = tag.text.strip()
@@ -362,7 +360,6 @@ def fetch_stock_news_headlines(stock_name):
                         if news_str not in titles: titles.append(news_str)
     except: pass 
 
-    # 2. 보조 타겟: 다음(Daum) 뉴스 우회 (본문 요약 Snippet 추가)
     if len(titles) < 3:
         try:
             daum_url = f"https://search.daum.net/search?w=news&q={quote('특징주 ' + stock_name)}"
@@ -385,7 +382,6 @@ def fetch_stock_news_headlines(stock_name):
                             if news_str not in titles:
                                 titles.append(news_str)
                 else:
-                    # 폴백
                     for tag in soup_daum.select('.c-tit-doc, .tit_main, a.f_link_b'):
                         text = tag.text.strip()
                         if text:
@@ -406,7 +402,7 @@ def perform_batch_analysis(news_map):
         generation_config = genai.types.GenerationConfig(temperature=0.1, top_p=0.8)
         analysis_model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
         
-        # 💡 [핵심 혁신] CoT(사고의 사슬) 프롬프트 및 본문 내용 종합 분석 추가
+        # 💡 [핵심 혁신] Bottom-Up (독립 태그 추출) -> Top-Down (태그 군집화를 통한 브리핑) 프롬프트 
         prompt = f"""
         당신은 여의도 최고 수준의 프랍 트레이더이자 시장 트렌드 분석의 권위자입니다.
         아래 데이터는 오늘 시장에서 강한 수급(거래대금 상위 & 급등)이 들어온 주도주들의 뉴스 '제목'과 '본문 요약(내용)' 모음입니다.
@@ -415,43 +411,43 @@ def perform_batch_analysis(news_map):
         {json.dumps(news_map, ensure_ascii=False)}
         
         [분석 지시사항 - 반드시 지킬 것]
-        1. 전체 시장 조감(Macro): 제공된 모든 종목과 뉴스를 종합적으로 읽고, 오늘 시장의 핵심 자금이 어디로 쏠리고 있는지(2~3개의 주도 테마) 파악하세요.
-        2. 시장 브리핑 작성: 파악된 주도 테마를 바탕으로 "오늘 시장은 OO 테마와 XX 관련주가 강하게 시장을 이끌고 있습니다." 형태의 트레이더 브리핑을 2~3줄로 작성하세요.
-        3. 사고의 사슬 (Chain of Thought) 적용: 종목별 테마를 결정하기 전, 반드시 '분석과정' 필드에 뉴스의 본문 내용을 바탕으로 핵심 키워드와 맥락을 1~2줄로 먼저 요약하고 논리적으로 검증하세요. (예: "본업은 시멘트지만 내용의 대부분이 성수동 부지 개발 호재이므로 부동산/개발 테마가 적합함")
-        4. 종목별 테마 할당(Micro):
-           - 단순한 회사 본업(예: 벤처캐피탈, 시멘트)이나 비테마성 호재(예: 실적개선, 흑자전환, 신규상장, 액면분할, 투자유치)는 '섹터'로 지정 절대 금지.
-           - 시장 주도 테마에 속하는 종목들은 확실하게 그 주도 테마명(예: "스페이스X/우주항공")으로 묶으세요.
-           - 단일 종목 호재로 여러 테마를 쪼개지 마세요. (예: 한미반도체 하나를 '반도체', 'HBM' 두 개로 분리 금지. -> "반도체/HBM" 1개로 통일)
-           - 동반 상승하는 종목이 없는 '나홀로 호재' 종목은 억지로 주도 테마를 만들지 말고, "개별주(업종명)" 형태로 묶어주세요. (예: "개별주(제약)", "개별주(건자재)")
-        5. 출력 형식: 반드시 아래와 같은 구조의 순수 JSON 포맷으로만 응답하세요. (마크다운 백틱 억제)
+        1. 개별 종목 태그 추출 (Micro 분석): 각 종목의 뉴스를 읽고, 주가를 상승시킨 핵심 모멘텀을 1~3개의 '독립된 키워드 태그'로 분리하여 추출하세요. 
+           - ❌ 잘못된 예: ["현대차그룹/로봇/AI"] (하나의 긴 문자열로 묶지 마세요)
+           - ⭕ 올바른 예: ["현대차그룹", "로봇/AI"] (각각 독립된 배열 요소로 나누세요)
+           - ⭕ 올바른 예: ["스페이스X"] (단일 테마인 경우 하나만 작성)
+        2. 개별주 처리: 시장 전체를 이끄는 테마가 아닌, 특정 기업만의 독자적인 호재(예: 성수동 부지 개발, 특정 기업과의 단독 계약 등)로 상승한 경우, 억지로 섹터를 만들지 말고 "핵심이유(개별주)" 형태로 태그를 달아주세요.
+           - ⭕ 올바른 예: ["성수동 부지 개발(개별주)"]
+        3. 시장 주도장세 브리핑 작성 (Macro 분석): 1번에서 추출한 40개 종목의 태그들을 종합적으로 살펴보고, 오늘 어떤 테마들에 자금이 가장 많이 쏠렸는지(교집합이 많은 태그) 분석하여 "오늘 시장은 [A] 테마와 [B] 관련주가 시장을 이끌고 있습니다." 형태의 트레이더 브리핑을 2~3줄로 작성하세요.
+        4. 사고의 사슬 (Chain of Thought): 종목별 태마를 결정하기 전, '분석과정' 필드에 뉴스 내용을 바탕으로 왜 이 태그들을 선정했는지 1~2줄로 먼저 추론하세요.
+        5. 출력 형식: 반드시 아래 예시와 같은 구조의 순수 JSON 포맷으로만 응답하세요. (마크다운 백틱 억제)
         
         [예시 포맷]
         {{
-          "시장브리핑": "오늘 시장은 현대차그룹의 대규모 투자에 따른 로봇/AI 섹터와, 스페이스X 수혜를 입은 우주항공 테마에 강한 매수세가 집중되고 있습니다. 그 외 개별 호재를 동반한 종목들이 각개전투 중입니다.",
+          "시장브리핑": "오늘 시장은 현대차그룹의 대규모 투자에 따른 로봇/AI 섹터와, 스페이스X 수혜를 입은 테마에 강한 매수세가 집중되고 있습니다. 그 외 개별 호재를 동반한 종목들이 각개전투 중입니다.",
           "종목분석": [
             {{
               "종목명": "현대차", 
-              "분석과정": "뉴스의 핵심은 새만금 9조 통큰 투자와 AI·로봇 거점 추진임. 자동차 본업보다 그룹 차원의 로봇/AI 모멘텀이 주가를 견인 중이므로 해당 테마로 분류함.",
-              "섹터": ["현대차그룹/로봇"], 
+              "분석과정": "뉴스의 핵심은 새만금 9조 통큰 투자와 AI·로봇 거점 추진임. 그룹 차원의 모멘텀과 로봇 산업 진출이 겹치므로 독립된 두 개의 태그로 분리함.",
+              "섹터": ["현대차그룹", "로봇/AI"], 
               "이유": "새만금 투자 및 로봇 거점 추진 기대감"
             }},
             {{
               "종목명": "아주IB투자", 
-              "분석과정": "벤처투자사이지만, 뉴스 내용을 보면 스페이스X 지분 가치 상승에 집중되어 있음. 실전 트레이딩 관점에서 우주항공 관련주로 묶는 것이 타당함.",
-              "섹터": ["스페이스X/우주항공"], 
+              "분석과정": "벤처투자사이지만, 뉴스 내용을 보면 스페이스X 지분 가치 상승에 집중되어 있음. 실전 트레이딩 관점에서 스페이스X 관련주로 태그함.",
+              "섹터": ["스페이스X"], 
               "이유": "스페이스X 지분 가치 상승 부각"
             }},
             {{
-              "종목명": "한미반도체", 
-              "분석과정": "본문 내용에서 엔비디아 호실적 및 해외 고객사 장비 공급 이슈가 확인됨. 전형적인 반도체 주도주 흐름임.",
-              "섹터": ["반도체/HBM"], 
-              "이유": "해외 고객사 장비 공급 및 호실적"
+              "종목명": "삼표시멘트", 
+              "분석과정": "본업 호재보다는 성수동 부지 개발 기대감 관련 뉴스가 주를 이룸. 동반 상승하는 주도 테마가 아닌 개별 호재임.",
+              "섹터": ["성수동 부지 개발(개별주)"], 
+              "이유": "성수동 부지 개발 기대감"
             }},
             {{
-              "종목명": "삼표시멘트", 
-              "분석과정": "본업 호재보다는 성수동 부지 개발 기대감 관련 뉴스가 주를 이룸. 현재 시장을 이끄는 메가 테마라기보다는 개별 호재임.",
-              "섹터": ["개별주(건자재)"], 
-              "이유": "성수동 부지 개발 기대감"
+              "종목명": "한미반도체", 
+              "분석과정": "엔비디아 호실적 및 해외 고객사 장비 공급 이슈가 확인됨. 반도체 주도주 흐름임.",
+              "섹터": ["반도체"], 
+              "이유": "해외 고객사 장비 공급 및 호실적"
             }}
           ]
         }}
@@ -556,7 +552,7 @@ with tab_scanner:
                     df = df.sort_values(by='거래대금_num', ascending=False).head(40)
                     df = df[df['등락률_num'] >= 4.0]
                     
-            # 2단계: 종목별 뉴스 크롤링 및 Gemini 통합 분석 (시장 브리핑 포함)
+            # 2단계: 종목별 뉴스 크롤링 및 Gemini 통합 분석
             if not df.empty:
                 with st.spinner("2/2. 탑티어 AI 트레이더의 주도장세 및 테마 정밀 분석 중... (약 1분 소요)"):
                     news_payload = {}
@@ -623,7 +619,6 @@ with tab_scanner:
                 for idx, row in st.session_state.domestic_df.iterrows():
                     safe_sectors = force_list(row['섹터'])
                     for sec in safe_sectors:
-                        if sec == '개별주' and len(safe_sectors) > 1: continue 
                         if sec not in theme_counts: theme_counts[sec] = []
                         theme_counts[sec].append(row)
                 
@@ -662,7 +657,6 @@ with tab_analysis:
             for item in st.session_state.analysis_results:
                 if isinstance(item, dict) and item.get("종목명") == stock:
                     ai_reason = item.get("이유", ai_reason)
-                    # 💡 JSON에서 모델이 스스로 생각한 분석과정(CoT)을 가져옵니다.
                     ai_cot = item.get("분석과정", "추론 데이터가 없습니다.")
                     break
             
@@ -672,7 +666,6 @@ with tab_analysis:
             else:
                 news_li_html = "".join([f"<li style='margin-bottom: 8px; line-height: 1.4;'>{h}</li>" for h in headlines])
             
-            # 💡 두 번째 탭에 뇌 구조(추론 과정)를 보여주는 UI 블록 추가
             card_html = f"""
             <div style="background: white; border-radius: 8px; padding: 18px; margin-bottom: 15px; border-left: 5px solid #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; align-items: baseline; justify-content: space-between;">
