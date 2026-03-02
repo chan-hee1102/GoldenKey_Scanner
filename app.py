@@ -173,6 +173,27 @@ st.markdown(
         font-weight: 700;
     }
     
+    /* 🌟 시장 브리핑 박스 스타일 */
+    .briefing-box {
+        background: #eff6ff;
+        border-left: 5px solid #3b82f6;
+        padding: 15px 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        font-size: 0.95rem;
+        color: #1e3a8a;
+        line-height: 1.5;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .briefing-title {
+        font-weight: 800;
+        font-size: 1.1rem;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    
     div[data-testid="column"]:nth-of-type(2) [data-testid="stVerticalBlock"] { gap: 0px !important; }
     div[data-testid="stExpander"] { border: 1px solid rgba(0,0,0,0.1) !important; margin-bottom: -1px !important; border-radius: 0px !important; }
     div[data-testid="stExpander"]:first-of-type { border-radius: 8px 8px 0 0 !important; }
@@ -191,24 +212,26 @@ if 'global_themes' not in st.session_state: st.session_state.global_themes = []
 if 'global_briefing' not in st.session_state: st.session_state.global_briefing = "글로벌 스캔을 실행해주세요."
 if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.DataFrame()
 if 'analysis_results' not in st.session_state: st.session_state.analysis_results = []
+if 'market_briefing' not in st.session_state: st.session_state.market_briefing = "" 
 if 'news_payload' not in st.session_state: st.session_state.news_payload = {} 
 
 # ==========================================
 # 🌟 전역 설정 (섹터 색상 동기화 및 헬퍼 함수)
 # ==========================================
-# 💡 새롭게 추가될 트렌디한 섹터들의 색상 매핑 추가
 SECTOR_COLORS = {
     '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', 
     '전력/원전': '#fef3c7', '전력/신재생에너지': '#fef3c7', '바이오': '#fee2e2', 
-    '방산/우주': '#f1f5f9', '우주항공': '#f1f5f9', '스페이스X': '#e2e8f0',
-    '금융/지주': '#f3f4f6', '자동차': '#e0f2fe', '현대차그룹': '#cffafe', '철강': '#f1f5f9'
+    '방산/우주': '#f1f5f9', '우주항공': '#f1f5f9', '스페이스X/우주항공': '#e2e8f0',
+    '금융/지주': '#f3f4f6', '자동차': '#e0f2fe', '현대차그룹': '#cffafe', '철강': '#f1f5f9',
+    '비만치료제': '#fce7f3', '가상화폐/블록체인': '#fef9c3', '조선': '#e0e7ff'
 }
 
 def get_sector_color(sector_name):
-    # 등록된 색상이 없으면 옅은 회색 계열 반환
-    return SECTOR_COLORS.get(sector_name, '#f8fafc')
+    for key in SECTOR_COLORS:
+        if key in sector_name:
+            return SECTOR_COLORS[key]
+    return '#f8fafc'
 
-# 💡 글자 쪼개짐 원천 차단 로직
 def force_list(val):
     if isinstance(val, str):
         return [val]
@@ -297,7 +320,6 @@ def get_global_market_status():
 # --- [3] 💡 종목 정밀 분석 엔진 (Gemini) ---
 
 def fetch_stock_news_headlines(stock_name):
-    # 클라우드 IP 차단을 피하기 위한 현실적인 이중 크롤링 전략
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
@@ -306,7 +328,7 @@ def fetch_stock_news_headlines(stock_name):
     }
     titles = []
     
-    # 1. 메인 타겟: 네이버 금융 뉴스
+    # 1. 메인 타겟: 네이버 금융 뉴스 (본문 요약 Snippet 추가)
     try:
         encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
         fin_url = f"https://finance.naver.com/news/news_search.naver?q={encoded_kw}"
@@ -315,14 +337,32 @@ def fetch_stock_news_headlines(stock_name):
         
         if res_fin.status_code == 200:
             soup_fin = BeautifulSoup(res_fin.text, 'html.parser')
-            tags = soup_fin.select(".articleSubject a") or soup_fin.select(".tit") or soup_fin.select("dt a")
-            for tag in tags:
-                text = tag.text.strip()
-                if text and text not in titles:
-                    titles.append(text)
+            blocks = soup_fin.select("ul.newsList li dl, .newsList dl")
+            if blocks:
+                for blk in blocks:
+                    t_tag = blk.select_one(".articleSubject a, .tit, dt a")
+                    s_tag = blk.select_one(".articleSummary")
+                    if t_tag:
+                        title = t_tag.text.strip()
+                        summary = s_tag.text.strip().replace('\n', ' ').replace('\t', '') if s_tag else ""
+                        summary = re.sub(r'\|.*?$', '', summary).strip() # 언론사, 날짜 정보 클리닝
+                        if summary:
+                            news_str = f"제목: {title} (내용: {summary})"
+                        else:
+                            news_str = f"제목: {title}"
+                        if news_str not in titles:
+                            titles.append(news_str)
+            else:
+                # 블록 구조가 안 보이면 제목만 가져오는 폴백
+                tags = soup_fin.select(".articleSubject a, .tit, dt a")
+                for tag in tags:
+                    text = tag.text.strip()
+                    if text:
+                        news_str = f"제목: {text}"
+                        if news_str not in titles: titles.append(news_str)
     except: pass 
 
-    # 2. 보조 타겟: 다음(Daum) 뉴스 우회
+    # 2. 보조 타겟: 다음(Daum) 뉴스 우회 (본문 요약 Snippet 추가)
     if len(titles) < 3:
         try:
             daum_url = f"https://search.daum.net/search?w=news&q={quote('특징주 ' + stock_name)}"
@@ -330,10 +370,27 @@ def fetch_stock_news_headlines(stock_name):
             res_daum = requests.get(daum_url, headers=headers, timeout=5)
             if res_daum.status_code == 200:
                 soup_daum = BeautifulSoup(res_daum.text, 'html.parser')
-                for tag in soup_daum.select('.c-tit-doc, .tit_main, a.f_link_b'):
-                    text = tag.text.strip()
-                    if text and text not in titles:
-                        titles.append(text)
+                blocks = soup_daum.select('.c-list-basic li, .wrap_cont')
+                if blocks:
+                    for blk in blocks:
+                        t_tag = blk.select_one('.c-tit-doc, .tit_main, a.f_link_b')
+                        s_tag = blk.select_one('.c-desc, .desc, .conts_desc')
+                        if t_tag:
+                            title = t_tag.text.strip()
+                            summary = s_tag.text.strip().replace('\n', ' ').replace('\t', '') if s_tag else ""
+                            if summary:
+                                news_str = f"제목: {title} (내용: {summary})"
+                            else:
+                                news_str = f"제목: {title}"
+                            if news_str not in titles:
+                                titles.append(news_str)
+                else:
+                    # 폴백
+                    for tag in soup_daum.select('.c-tit-doc, .tit_main, a.f_link_b'):
+                        text = tag.text.strip()
+                        if text:
+                            news_str = f"제목: {text}"
+                            if news_str not in titles: titles.append(news_str)
         except: pass
 
     if not titles:
@@ -343,46 +400,75 @@ def fetch_stock_news_headlines(stock_name):
 
 def perform_batch_analysis(news_map):
     if not GEMINI_API_KEY or GEMINI_API_KEY == "YOUR_GEMINI_API_KEY":
-        return [{"종목명": "오류", "섹터": ["시스템"], "이유": "API 키가 설정되지 않았습니다.", "기사날짜": "-"}]
+        return "API 키 누락", [{"종목명": "오류", "섹터": ["시스템"], "이유": "API 키가 설정되지 않았습니다.", "기사날짜": "-"}]
     
     try:
-        analysis_model = genai.GenerativeModel('gemini-2.5-flash')
-        # 💡 프롬프트 대폭 강화: 비테마 용어 차단, 핵심 모멘텀 추출, 테마 그룹핑
+        generation_config = genai.types.GenerationConfig(temperature=0.1, top_p=0.8)
+        analysis_model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
+        
+        # 💡 [핵심 혁신] CoT(사고의 사슬) 프롬프트 및 본문 내용 종합 분석 추가
         prompt = f"""
-        당신은 여의도 탑티어 프랍 트레이더이자 주식 단기 주도주 분석 전문가입니다.
-        아래 데이터는 오늘 시장에서 강한 수급이 들어온 실시간 주도주들의 최신 뉴스 헤드라인 모음(종목당 최대 10개)입니다.
+        당신은 여의도 최고 수준의 프랍 트레이더이자 시장 트렌드 분석의 권위자입니다.
+        아래 데이터는 오늘 시장에서 강한 수급(거래대금 상위 & 급등)이 들어온 주도주들의 뉴스 '제목'과 '본문 요약(내용)' 모음입니다.
         
         [데이터]
         {json.dumps(news_map, ensure_ascii=False)}
         
-        [전문가 테마 분류 및 분석 규칙 - 매우 중요]
-        1. 단순한 회사 업종(예: 창업투자, 벤처캐피탈, 시멘트)이나 비테마성 호재(예: 실적개선, 흑자전환, 신규상장, 액면분할)는 '섹터' 배열에 절대 넣지 마세요.
-        2. 시장의 '진짜 돈이 몰리는 주도 테마'를 정확히 파악해서 섹터명으로 지정하세요. 
-           - 예: 아주IB투자가 '스페이스X' 지분 가치로 올랐다면 섹터는 ["스페이스X", "우주항공"] 입니다. "창업투자"가 아닙니다.
-           - 예: 서진시스템이 'ESS'와 '스페이스X' 장비 공급으로 올랐다면 ["스페이스X", "우주항공", "ESS"] 입니다.
-        3. 연관된 테마는 현재 시장 트렌드에 맞게 강력하게 묶어주세요:
-           - 로봇, 인공지능, AI -> ["로봇/AI"] 로 통일
-           - 태양광, 풍력, 신재생, AI전력 -> ["전력/신재생에너지"] 로 통일
-           - 2차전지, 전고체, 배터리, ESS -> ["2차전지"] 로 통일 (단, ESS가 매우 강조될 경우 "ESS" 추가 허용)
-           - 특정 대기업 그룹사 모멘텀(예: 현대차그룹, 삼성그룹 등)이 확실하다면 그룹사 테마명을 추가
-        4. 데이터에 뉴스가 없거나 상승 이유가 단순히 '급등'처럼 모호하면 "섹터": ["개별주"], "이유": "최근 뚜렷한 재료 발견 안됨" 으로 작성하세요.
-        5. 반드시 아래 예시와 같은 순수 JSON 배열(Array) 형식으로만 응답하세요. (백틱이나 부가 설명 절대 금지)
+        [분석 지시사항 - 반드시 지킬 것]
+        1. 전체 시장 조감(Macro): 제공된 모든 종목과 뉴스를 종합적으로 읽고, 오늘 시장의 핵심 자금이 어디로 쏠리고 있는지(2~3개의 주도 테마) 파악하세요.
+        2. 시장 브리핑 작성: 파악된 주도 테마를 바탕으로 "오늘 시장은 OO 테마와 XX 관련주가 강하게 시장을 이끌고 있습니다." 형태의 트레이더 브리핑을 2~3줄로 작성하세요.
+        3. 사고의 사슬 (Chain of Thought) 적용: 종목별 테마를 결정하기 전, 반드시 '분석과정' 필드에 뉴스의 본문 내용을 바탕으로 핵심 키워드와 맥락을 1~2줄로 먼저 요약하고 논리적으로 검증하세요. (예: "본업은 시멘트지만 내용의 대부분이 성수동 부지 개발 호재이므로 부동산/개발 테마가 적합함")
+        4. 종목별 테마 할당(Micro):
+           - 단순한 회사 본업(예: 벤처캐피탈, 시멘트)이나 비테마성 호재(예: 실적개선, 흑자전환, 신규상장, 액면분할, 투자유치)는 '섹터'로 지정 절대 금지.
+           - 시장 주도 테마에 속하는 종목들은 확실하게 그 주도 테마명(예: "스페이스X/우주항공")으로 묶으세요.
+           - 단일 종목 호재로 여러 테마를 쪼개지 마세요. (예: 한미반도체 하나를 '반도체', 'HBM' 두 개로 분리 금지. -> "반도체/HBM" 1개로 통일)
+           - 동반 상승하는 종목이 없는 '나홀로 호재' 종목은 억지로 주도 테마를 만들지 말고, "개별주(업종명)" 형태로 묶어주세요. (예: "개별주(제약)", "개별주(건자재)")
+        5. 출력 형식: 반드시 아래와 같은 구조의 순수 JSON 포맷으로만 응답하세요. (마크다운 백틱 억제)
         
-        [예시]
-        [
-          {{"종목명": "현대차", "섹터": ["자동차", "현대차그룹", "로봇/AI"], "이유": "새만금 9조 통큰 투자 및 AI·로봇 거점 추진 기대감", "기사날짜": "최근 특징주"}},
-          {{"종목명": "아주IB투자", "섹터": ["스페이스X", "우주항공"], "이유": "스페이스X 지분 가치 상승 및 우주경제 성장 기대감", "기사날짜": "최근 특징주"}},
-          {{"종목명": "HD현대에너지솔루션", "섹터": ["전력/신재생에너지"], "이유": "우주태양광 핵심 소재 개발 및 전력수요 증가 수혜", "기사날짜": "최근 특징주"}},
-          {{"종목명": "카카오", "섹터": ["개별주"], "이유": "최근 뚜렷한 재료 발견 안됨", "기사날짜": "-"}}
-        ]
+        [예시 포맷]
+        {{
+          "시장브리핑": "오늘 시장은 현대차그룹의 대규모 투자에 따른 로봇/AI 섹터와, 스페이스X 수혜를 입은 우주항공 테마에 강한 매수세가 집중되고 있습니다. 그 외 개별 호재를 동반한 종목들이 각개전투 중입니다.",
+          "종목분석": [
+            {{
+              "종목명": "현대차", 
+              "분석과정": "뉴스의 핵심은 새만금 9조 통큰 투자와 AI·로봇 거점 추진임. 자동차 본업보다 그룹 차원의 로봇/AI 모멘텀이 주가를 견인 중이므로 해당 테마로 분류함.",
+              "섹터": ["현대차그룹/로봇"], 
+              "이유": "새만금 투자 및 로봇 거점 추진 기대감"
+            }},
+            {{
+              "종목명": "아주IB투자", 
+              "분석과정": "벤처투자사이지만, 뉴스 내용을 보면 스페이스X 지분 가치 상승에 집중되어 있음. 실전 트레이딩 관점에서 우주항공 관련주로 묶는 것이 타당함.",
+              "섹터": ["스페이스X/우주항공"], 
+              "이유": "스페이스X 지분 가치 상승 부각"
+            }},
+            {{
+              "종목명": "한미반도체", 
+              "분석과정": "본문 내용에서 엔비디아 호실적 및 해외 고객사 장비 공급 이슈가 확인됨. 전형적인 반도체 주도주 흐름임.",
+              "섹터": ["반도체/HBM"], 
+              "이유": "해외 고객사 장비 공급 및 호실적"
+            }},
+            {{
+              "종목명": "삼표시멘트", 
+              "분석과정": "본업 호재보다는 성수동 부지 개발 기대감 관련 뉴스가 주를 이룸. 현재 시장을 이끄는 메가 테마라기보다는 개별 호재임.",
+              "섹터": ["개별주(건자재)"], 
+              "이유": "성수동 부지 개발 기대감"
+            }}
+          ]
+        }}
         """
         response = analysis_model.generate_content(prompt)
         raw_text = response.text.strip()
         raw_text = re.sub(r"^```json\n?|^```\n?", "", raw_text) 
         raw_text = re.sub(r"\n?```$", "", raw_text)
-        return json.loads(raw_text)
+        
+        parsed_json = json.loads(raw_text)
+        briefing = parsed_json.get("시장브리핑", "오늘 시장의 주도 테마 브리핑을 생성하지 못했습니다.")
+        stock_analysis = parsed_json.get("종목분석", [])
+        
+        return briefing, stock_analysis
+        
     except Exception as e:
-        return [{"종목명": "분석 시스템 에러", "섹터": ["개별주"], "이유": f"Gemini 분석 오류", "기사날짜": "-"}]
+        return f"분석 중 오류 발생: {e}", [{"종목명": "시스템 에러", "분석과정": "오류 발생", "섹터": ["오류"], "이유": "AI 분석 실패", "기사날짜": "-"}]
 
 # --- [4] 국내 데이터 크롤링 ---
 
@@ -470,9 +556,9 @@ with tab_scanner:
                     df = df.sort_values(by='거래대금_num', ascending=False).head(40)
                     df = df[df['등락률_num'] >= 4.0]
                     
-            # 2단계: 종목별 뉴스 크롤링 및 Gemini 통합 분석
+            # 2단계: 종목별 뉴스 크롤링 및 Gemini 통합 분석 (시장 브리핑 포함)
             if not df.empty:
-                with st.spinner("2/2. 탑티어 AI 트레이더의 테마 정밀 분석 중... (약 1분 소요)"):
+                with st.spinner("2/2. 탑티어 AI 트레이더의 주도장세 및 테마 정밀 분석 중... (약 1분 소요)"):
                     news_payload = {}
                     progress_bar = st.progress(0)
                     stocks = df['종목명'].tolist()
@@ -480,42 +566,42 @@ with tab_scanner:
                     for i, name in enumerate(stocks):
                         news_payload[name] = fetch_stock_news_headlines(name)
                         progress_bar.progress((i + 1) / len(stocks))
-                        # 💡 봇 차단 방지를 위한 안전 딜레이 적용
                         time.sleep(1.0) 
                     
                     st.session_state.news_payload = news_payload
                     
-                    ai_results = perform_batch_analysis(news_payload)
+                    market_brief, ai_results = perform_batch_analysis(news_payload)
+                    st.session_state.market_briefing = market_brief
                     st.session_state.analysis_results = ai_results
                     
-                    # AI 결과를 딕셔너리로 매핑 (복수 섹터 지원)
                     sector_dict = {}
                     for item in ai_results:
                         if isinstance(item, dict):
                             s_name = item.get("종목명", "")
-                            # 💡 1차 강제 리스트화 처리 (글자 쪼개짐 방지)
                             sectors = force_list(item.get("섹터", ["개별주"]))
                             sector_dict[s_name] = sectors
                             
-                    # 각 종목에 섹터 리스트 할당
-                    # 💡 2차 강제 리스트화
                     df['섹터'] = df['종목명'].apply(lambda x: force_list(sector_dict.get(x, ['개별주'])))
                     st.session_state.domestic_df = df
             else:
                 st.info("ℹ️ 현재 조건에 맞는 주도주가 없습니다.")
 
-        # 메인 화면 렌더링 (다중 뱃지 지원)
+        if st.session_state.market_briefing:
+            st.markdown(f'''
+            <div class="briefing-box">
+                <div class="briefing-title">🎙️ AI 트레이더의 오늘의 시장 브리핑</div>
+                {st.session_state.market_briefing}
+            </div>
+            ''', unsafe_allow_html=True)
+
         if not st.session_state.domestic_df.empty:
             for _, row in st.session_state.domestic_df.iterrows():
-                # 다중 섹터 뱃지 HTML 조립
                 badges_html = ""
-                # 💡 안전하게 검증된 리스트만 순회
                 safe_sectors = force_list(row['섹터'])
                 for sec in safe_sectors:
                     bg = get_sector_color(sec)
                     badges_html += f'<span class="sector-badge" style="background: {bg}; color: #1e293b;">{sec}</span>'
                 
-                # 💡 10% 이상 초록색, 20% 이상 빨간색
                 rv = row['등락률_num']; rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1f2937")
                 
                 st.markdown(f'''
@@ -532,22 +618,18 @@ with tab_scanner:
                 </div>
                 ''', unsafe_allow_html=True)
             
-            # 우측 주도 섹터 요약 화면 렌더링 (테마별 종목 재그룹화)
             with summary_placeholder.container():
                 theme_counts = {}
                 for idx, row in st.session_state.domestic_df.iterrows():
                     safe_sectors = force_list(row['섹터'])
                     for sec in safe_sectors:
-                        # 다른 모멘텀이 있는 경우 굳이 '개별주' 폴더에 넣지 않음
                         if sec == '개별주' and len(safe_sectors) > 1: continue 
                         if sec not in theme_counts: theme_counts[sec] = []
                         theme_counts[sec].append(row)
                 
-                # 종목 수가 많은 테마 -> 거래대금이 큰 테마 순으로 정렬
                 sorted_themes = sorted(theme_counts.items(), key=lambda x: (len(x[1]), sum(r['거래대금_num'] for r in x[1])), reverse=True)
                 
                 for s_name, stocks_list in sorted_themes:
-                    # 해당 테마의 종목들을 등락률 순으로 정렬
                     stocks_df = pd.DataFrame(stocks_list).sort_values('등락률_num', ascending=False)
                     
                     with st.expander(f"**{s_name}** ({len(stocks_df)})", expanded=True):
@@ -555,7 +637,6 @@ with tab_scanner:
                             ldr = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
                             rv = s_row["등락률_num"]
                             
-                            # 💡 우측 섹터 리스트 10% 초록색 로직 적용
                             rate_color = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#334155")
                             
                             st.markdown(f'''
@@ -573,13 +654,16 @@ with tab_analysis:
     if not st.session_state.news_payload:
         st.info("👈 [실시간 주도주 스캐너] 탭에서 스캔을 먼저 실행해 주세요.")
     else:
-        st.markdown("<p style='color:#64748b; margin-bottom: 20px;'>스캔된 주도주들의 AI 상승 요약과 최근 기사 10개를 상세하게 확인합니다.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color:#64748b; margin-bottom: 20px;'>스캔된 주도주들의 AI 상승 요약, <b>논리적 추론 과정</b>, 그리고 최근 기사(본문 포함)를 상세하게 확인합니다.</p>", unsafe_allow_html=True)
         
         for stock, headlines in st.session_state.news_payload.items():
             ai_reason = "최근 뚜렷한 재료 발견 안됨"
+            ai_cot = "추론 과정 없음"
             for item in st.session_state.analysis_results:
                 if isinstance(item, dict) and item.get("종목명") == stock:
                     ai_reason = item.get("이유", ai_reason)
+                    # 💡 JSON에서 모델이 스스로 생각한 분석과정(CoT)을 가져옵니다.
+                    ai_cot = item.get("분석과정", "추론 데이터가 없습니다.")
                     break
             
             news_li_html = ""
@@ -588,6 +672,7 @@ with tab_analysis:
             else:
                 news_li_html = "".join([f"<li style='margin-bottom: 8px; line-height: 1.4;'>{h}</li>" for h in headlines])
             
+            # 💡 두 번째 탭에 뇌 구조(추론 과정)를 보여주는 UI 블록 추가
             card_html = f"""
             <div style="background: white; border-radius: 8px; padding: 18px; margin-bottom: 15px; border-left: 5px solid #3b82f6; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
                 <div style="display: flex; align-items: baseline; justify-content: space-between;">
@@ -595,6 +680,9 @@ with tab_analysis:
                 </div>
                 <div style="margin-top: 10px; padding: 10px 12px; background: #eff6ff; border-radius: 6px; color: #1e40af; font-size: 0.95rem; font-weight: 700;">
                     💡 AI 핵심 재료: {ai_reason}
+                </div>
+                <div style="margin-top: 6px; padding: 8px 12px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; color: #475569; font-size: 0.85rem;">
+                    🧠 <b>AI 분석 추론:</b> {ai_cot}
                 </div>
                 <hr style="border: 0; height: 1px; background: #e2e8f0; margin: 15px 0;">
                 <ul style="margin:0; padding-left: 20px; font-size: 0.9rem; color: #334155; font-weight: 600;">
