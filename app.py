@@ -248,11 +248,10 @@ if 'news_payload' not in st.session_state: st.session_state.news_payload = {}
 # 🌟 전역 설정 (섹터 색상 동기화 및 헬퍼 함수)
 # ==========================================
 SECTOR_COLORS = {
-    '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', '배터리': '#d1fae5',
+    '반도체': '#dbeafe', '로봇/AI': '#ede9fe', '2차전지': '#d1fae5', '배터리': '#d1fae5', 'ESS': '#d1fae5',
     '전력': '#fef3c7', '신재생에너지': '#fef3c7', '바이오': '#fee2e2', 
     '방산': '#f1f5f9', '우주항공': '#f1f5f9', '스페이스X': '#e2e8f0',
-    '금융/지주': '#f3f4f6', '자동차': '#e0f2fe', '현대차그룹': '#cffafe', '철강': '#f1f5f9',
-    '비만치료제': '#fce7f3', '가상화폐/블록체인': '#fef9c3', '조선': '#e0e7ff', '희토류': '#fef08a'
+    '금융/지주': '#f3f4f6', '자동차': '#e0f2fe', '현대차그룹': '#cffafe', '철강': '#f1f5f9'
 }
 
 def get_sector_color(sector_name):
@@ -270,24 +269,24 @@ def force_list(val):
         return [str(x) for x in val]
     return ["개별주"]
 
-# --- [2] 미 증시 엔진 (필라 반도체 지수 보강) ---
+# --- [2] 미 증시 엔진 (필라 반도체 지수 색상 교정 및 보강) ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_sox_stable():
-    """필라델피아 반도체 지수(SOX) 3단계 안정화 크롤러"""
+    """필라델피아 반도체 지수(SOX) 3단계 안정화 및 괄호 제거 로직"""
     headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     
-    # [1단계] 인베스팅닷컴 상세 페이지
+    # [1단계] 인베스팅닷컴 (가장 신뢰성 높음)
     try:
         url = "https://kr.investing.com/indices/phlx-semiconductor"
-        res = requests.get(url, headers=headers, timeout=7)
+        res = requests.get(url, headers=headers, timeout=8)
         soup = BeautifulSoup(res.text, 'html.parser')
         val = soup.select_one('[data-test="instrument-price-last"]').text
         rate = soup.select_one('[data-test="instrument-price-change-percent"]').text
         if val:
-            # 괄호 및 불필요한 기호 제거하여 Streamlit 색상 인식 최적화
+            # 괄호 제거 로직 필수 (Streamlit의 Metric 색상 인식을 위해)
             clean_rate = rate.replace('(', '').replace(')', '').replace('%', '').strip()
             if not clean_rate.startswith('-') and not clean_rate.startswith('+'):
                 clean_rate = f"+{clean_rate}"
@@ -297,21 +296,25 @@ def fetch_sox_stable():
     # [2단계] 구글 파이낸스
     try:
         url = "https://www.google.com/finance/quote/SOX:INDEXNASDAQ"
-        res = requests.get(url, headers=headers, timeout=7)
+        res = requests.get(url, headers=headers, timeout=8)
         soup = BeautifulSoup(res.text, 'html.parser')
         val = soup.select_one(".YMlKec.fxKb9b").text
-        rate = soup.select_one(".Jw796").text.replace('(', '').replace(')', '').strip()
-        if val: return val, rate
+        rate = soup.select_one(".Jw796").text.replace('(', '').replace(')', '').replace('%', '').strip()
+        if val:
+            if not rate.startswith('-') and not rate.startswith('+'): rate = f"+{rate}"
+            return val, f"{rate}%"
     except: pass
 
     # [3단계] 네이버 상세 지표
     try:
         url = "https://finance.naver.com/world/sise.naver?symbol=SPI@SOX"
-        res = requests.get(url, headers=headers, timeout=7)
+        res = requests.get(url, headers=headers, timeout=8)
         soup = BeautifulSoup(res.text, 'html.parser')
         val = soup.select_one("#last_price").text
-        rate = soup.select_one("#change_percent").text.strip()
-        if val: return val, rate
+        rate = soup.select_one("#change_percent").text.replace('%', '').strip()
+        if val:
+            if not rate.startswith('-') and not rate.startswith('+'): rate = f"+{rate}"
+            return val, f"{rate}%"
     except: pass
 
     return None, None
@@ -356,7 +359,7 @@ def get_global_market_status():
             
         st.session_state.global_indices = indices
         st.session_state.global_themes = themes
-        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n글로벌 지표 수집 안정화가 완료되었습니다."
+        st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}\n해외 지표 수집 안정화 및 필라델피아 지수 색상 교정이 완료되었습니다."
     except: st.session_state.global_briefing = "해외 서버 동기화 일시 지연 중"
 
 # --- [3] 💡 종목 정밀 분석 엔진 (Gemini) ---
@@ -364,8 +367,6 @@ def get_global_market_status():
 def fetch_stock_news_headlines(stock_name):
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
         'Referer': "https://finance.naver.com/"
     }
     titles = []
@@ -444,6 +445,7 @@ def perform_batch_analysis(news_map):
         generation_config = genai.types.GenerationConfig(temperature=0.1, top_p=0.8)
         analysis_model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
         
+        # 💡 [프롬프트 핵심 개선] 테마 묶기 및 분리 룰 강화
         prompt = f"""
         당신은 여의도 최고 수준의 프랍 트레이더이자 시장 트렌드 분석의 권위자입니다.
         아래 데이터는 오늘 시장에서 강한 수급(거래대금 상위 & 급등)이 들어온 주도주들의 뉴스 '제목'과 '본문 요약(내용)' 모음입니다.
@@ -452,45 +454,31 @@ def perform_batch_analysis(news_map):
         {json.dumps(news_map, ensure_ascii=False)}
         
         [분석 지시사항 - 반드시 지킬 것]
-        1. 대분류(Macro Theme) 및 핵심 명사 강제 통일: 시장의 큰 숲을 보기 위해 동의어나 하위 테마, 수식어는 다 떼어내고 가장 핵심이 되는 '1~5글자의 짧은 명사'로 통일하세요.
-           - ❌ 나쁜 예: ["스페이스X 장비 공급", "스페이스X 투자", "태양광 및 재생에너지"]
-           - ⭕ 좋은 예: ["스페이스X", "신재생에너지", "전력", "2차전지", "로봇/AI", "반도체"]
-        2. 글로벌 메가 테마 묶기 (절대 규칙): '스페이스X', '엔비디아', '테슬라' 등 시장을 지배하는 글로벌 기업 관련 이슈는 단순한 개별 계약이 아닙니다. 관련 종목들이 다 같이 오르는 '주도 테마'이므로, 절대로 뒤에 '(개별주)'를 붙이지 말고 명사("스페이스X") 하나로 통일해서 묶어주세요.
-           - 아주IB투자(지분 투자), 서진시스템(장비 공급) 등 이유가 달라도 "스페이스X" 관련이면 무조건 ["스페이스X"] 로 통일하여 그룹화되게 하세요.
-        3. 독립 태그 분리: 여러 테마 모멘텀이 겹칠 경우, 하나의 긴 문장으로 묶지 말고 각각 독립된 배열 요소로 쪼개세요.
-        4. 진짜 개별주 처리: 시장 주도 테마(섹터)나 글로벌 메가 테마에 전혀 속하지 않는, 해당 기업만의 지엽적이고 독자적인 호재(신규상장, 부지 개발, 코스닥 편입 등)만 "핵심이유(개별주)" 형태로 묶어주세요. 
-           - ⭕ 올바른 예: ["성수동 부지 개발(개별주)"], ["코스닥150 편입(개별주)"]
-        5. 시장 주도장세 브리핑 작성 (Macro 분석): 추출한 40개 종목의 태그들을 종합적으로 살펴보고, 오늘 어떤 테마들에 자금이 가장 많이 쏠렸는지(교집합이 많은 태그) 분석하여 "오늘 시장은 [A] 테마와 [B] 관련주가 시장을 이끌고 있습니다." 형태의 트레이더 브리핑을 2~3줄로 작성하세요. (단, '(개별주)' 태그는 브리핑에서 제외)
-        6. 사고의 사슬 (Chain of Thought): 종목별 태마를 결정하기 전, '분석과정' 필드에 뉴스 내용을 바탕으로 왜 이 태그들을 선정했는지 1~2줄로 먼저 추론하세요.
-        7. 출력 형식: 반드시 아래 예시와 같은 구조의 순수 JSON 포맷으로만 응답하세요. (마크다운 백틱 억제)
+        1. 근본 섹터 필수 표시: 개별 호재가 아무리 강해도, 종목이 근본적으로 속한 '큰 업종 테마'를 무조건 배열의 첫 번째 섹터로 지정하세요.
+           - 에임드바이오 -> ["바이오", "코스닥150 편입(개별주)"]
+           - 신성이엔지 -> ["신재생에너지", "AI 데이터센터 냉각(개별주)"]
+        2. 글로벌 메가 테마 통합 (SpaceX): '스페이스X', '엔비디아', '테슬라'와 같은 글로벌 핵심 키워드는 관련 종목들을 하나로 묶어주는 강력한 섹터입니다. 지분, 계약, 공급 등 사유 불문 무조건 명사 "스페이스X" 로 통합하세요. 절대로 SpaceX 관련주에 (개별주)를 붙이지 마세요.
+           - 아주IB투자, 서진시스템 -> 섹터에 반드시 "스페이스X" 가 포함되어야 함.
+        3. 테마 독립 분류: 2차전지와 ESS는 밀접하지만 별개 테마로 움직이기도 합니다. 뉴스 내용에 따라 ["2차전지"], ["ESS"] 를 각각 독립된 태그로 분류하세요. 두 성격이 모두 보인다면 병기하세요.
+        4. 노이즈 제거: 특정 기업 이름(엔비디아 등)을 무분별하게 테마명으로 쓰지 마세요. 스페이스X처럼 집단으로 움직이는 경우가 아니면 업종명(반도체, 자동차)으로 통일하세요.
+           - 한미반도체 -> ["반도체"] (Nvidia 명시 금지)
+        5. 출력 형식: 반드시 아래 예시와 같은 구조의 순수 JSON 포맷으로만 응답하세요. (마크다운 백틱 억제)
         
         [예시 포맷]
         {{
-          "시장브리핑": "오늘 시장은 현대차그룹의 모멘텀에 따른 로봇/AI 섹터와, 스페이스X 수혜를 입은 테마에 강한 매수세가 집중되고 있습니다. 그 외 개별 호재를 동반한 종목들이 각개전투 중입니다.",
+          "시장브리핑": "오늘 시장은 현대차그룹의 투자 소식과 스페이스X 관련주들에 강력한 수급이 집중되며 주도 테마를 형성했습니다.",
           "종목분석": [
             {{
               "종목명": "서진시스템", 
-              "분석과정": "스페이스X에 3000억 장비 공급 소식이 핵심임. '스페이스X 장비 공급'이라는 수식어를 떼고 강력한 테마인 '스페이스X'로 통일함.",
-              "섹터": ["스페이스X", "통신장비"], 
-              "이유": "스페이스X 장비 공급 및 실적 기대감"
+              "분석과정": "스페이스X에 3000억 규모 장비를 공급한다는 소식은 글로벌 메가 테마인 스페이스X의 일환임. 또한 ESS 시장 성장이 주요 동력이므로 '2차전지'와 'ESS'를 독립 태그로 분류함.",
+              "섹터": ["스페이스X", "2차전지", "ESS"], 
+              "이유": "스페이스X 장비 공급 및 ESS 시장 성장 수혜"
             }},
             {{
-              "종목명": "아주IB투자", 
-              "분석과정": "스페이스X 지분 가치 상승 부각. 단순한 벤처캐피탈 개별주가 아니라 스페이스X 테마에 동조하는 흐름이므로 스페이스X로 그룹화함.",
-              "섹터": ["스페이스X", "벤처투자"], 
-              "이유": "스페이스X 지분 가치 상승 부각"
-            }},
-            {{
-              "종목명": "현대차", 
-              "분석과정": "새만금 투자와 AI·로봇 거점 추진임. 그룹 차원의 모멘텀과 로봇 산업 진출이 겹치므로 독립된 두 개의 표준 태그로 분리함.",
-              "섹터": ["현대차그룹", "로봇/AI"], 
-              "이유": "새만금 투자 및 로봇 거점 추진 기대감"
-            }},
-            {{
-              "종목명": "삼표시멘트", 
-              "분석과정": "성수동 부지 개발 기대감이 핵심 호재임. 주도 테마가 아닌 지엽적 개별 호재이므로 개별주로 묶음.",
-              "섹터": ["성수동 부지 개발(개별주)"], 
-              "이유": "성수동 부지 개발 기대감"
+              "종목명": "에임드바이오", 
+              "분석과정": "코스닥 150 편입이라는 강력한 개별 호재가 있으나, 기업의 근본 섹터는 바이오이므로 바이오를 우선 명시함.",
+              "섹터": ["바이오", "코스닥150 편입(개별주)"], 
+              "이유": "코스닥150 신규 편입 및 바이오 수급 집중"
             }}
           ]
         }}
@@ -555,6 +543,7 @@ def format_volume_to_jo_eok(x_million):
 # --- [5] UI 레이아웃 구성 ---
 
 with st.sidebar:
+    # 🌟 사이드바 여백 정리
     st.markdown("<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True)
     st.markdown("<h2 style='font-size: 1.5rem; font-weight: 800; color: #0f172a; margin-bottom: 15px;'>🌐 글로벌 증시</h2>", unsafe_allow_html=True)
     if st.button("🚀 실시간 스캔", use_container_width=True, key="global_btn"):
