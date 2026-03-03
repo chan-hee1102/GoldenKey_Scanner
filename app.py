@@ -28,7 +28,7 @@ else:
     GEMINI_API_KEY = "YOUR_GEMINI_API_KEY"
     model = None
 
-# 키움 API 인증 정보 (Streamlit Secrets 필수 등록)
+# 키움 API 인증 정보 (Streamlit Secrets에서 관리)
 KIWOOM_APP_KEY = st.secrets.get("KIWOOM_APP_KEY", "")
 KIWOOM_APP_SECRET = st.secrets.get("KIWOOM_APP_SECRET", "")
 
@@ -274,25 +274,29 @@ def force_list(val):
         return [str(x) for x in val]
     return ["개별주"]
 
-# --- [2] 미 증시 엔진 ---
+# --- [2] 미 증시 엔진 (해외 증시 크롤링 로직 복구 완료) ---
 
 def get_kst_time():
     return datetime.now(timezone(timedelta(hours=9))).strftime('%Y-%m-%d %H:%M:%S')
 
 def fetch_sox_stable():
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    """필라델피아 반도체 지수(SOX) 크롤링 (구글 파이낸스)"""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
         url = "https://www.google.com/finance/quote/SOX:INDEXNASDAQ"
         res = requests.get(url, headers=headers, timeout=7)
         soup = BeautifulSoup(res.text, 'html.parser')
         val = soup.select_one(".YMlKec.fxKb9b").text
         rate = soup.select_one(".Jw796").text.replace('(', '').replace(')', '').replace('%', '').strip()
-        if not rate.startswith('-') and not rate.startswith('+'): rate = f"+{rate}"
-        return val, f"{rate}%"
-    except: return None, None
+        if val:
+            if not rate.startswith('-') and not rate.startswith('+'): rate = f"+{rate}"
+            return val, f"{rate}%"
+    except: pass
+    return None, None
 
 def fetch_robust_finance(ticker):
-    headers = {'User-Agent': 'Mozilla/5.0'}
+    """야후 파이낸스 해외 지수/ETF 크롤링"""
+    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
     try:
         url = f"https://finance.yahoo.com/quote/{ticker}"
         res = requests.get(url, headers=headers, timeout=12)
@@ -308,19 +312,30 @@ def fetch_robust_finance(ticker):
     return "N/A", "0.00%"
 
 def get_global_market_status():
+    """글로벌 스캔 메인 로직"""
     indices = []
     themes = []
     idx_map = {"나스닥 100": "^NDX", "S&P 500": "^GSPC", "다우존스": "^DJI"}
+    
     try:
         for name, tk in idx_map.items():
             v, r = fetch_robust_finance(tk)
             indices.append({"name": name, "value": v, "delta": r})
             time.sleep(0.2)
+        
         sox_v, sox_r = fetch_sox_stable()
-        indices.append({"name": "필라 반도체", "value": sox_v or "N/A", "delta": sox_r or "0.00%"})
+        indices.append({"name": "필라 반도체", "value": sox_v if sox_v else "N/A", "delta": sox_r if sox_r else "0.00%"})
+
+        etf_map = [("반도체 (SOXX)", "SOXX", "반도체"), ("로봇/AI (BOTZ)", "BOTZ", "로봇/AI"), ("2차전지 (LIT)", "LIT", "2차전지"), ("전력망 (GRID)", "GRID", "전력/원전"), ("원자력 (URA)", "URA", "전력/원전"), ("바이오 (IBB)", "IBB", "바이오")]
+        for name, tk, sector in etf_map:
+            _, r_etf = fetch_robust_finance(tk)
+            themes.append({"name": name, "delta": r_etf, "color": SECTOR_COLORS.get(sector, "#ffffff")})
+            time.sleep(0.2)
+            
         st.session_state.global_indices = indices
+        st.session_state.global_themes = themes
         st.session_state.global_briefing = f"최종 업데이트: {get_kst_time()}"
-    except: pass
+    except: st.session_state.global_briefing = "해외 서버 동기화 지연"
 
 # --- [3] 💡 종목 정밀 분석 엔진 (Gemini) ---
 
@@ -330,9 +345,9 @@ def fetch_stock_news_headlines(stock_name):
     try:
         encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
         fin_url = f"https://finance.naver.com/news/news_search.naver?q={encoded_kw}"
-        res = requests.get(fin_url, headers=headers, timeout=5)
-        res.encoding = 'euc-kr'
-        soup = BeautifulSoup(res.text, 'html.parser')
+        res_fin = requests.get(fin_url, headers=headers, timeout=5)
+        res_fin.encoding = 'euc-kr'
+        soup = BeautifulSoup(res_fin.text, 'html.parser')
         blocks = soup.select("ul.newsList li dl, .newsList dl")
         for blk in blocks:
             t_tag = blk.select_one(".articleSubject a, .tit, dt a")
@@ -343,17 +358,17 @@ def fetch_stock_news_headlines(stock_name):
 def perform_batch_analysis(news_map):
     if not model: return "API 키 누락", []
     try:
-        prompt = f"다음 주도주 뉴스 분석: {json.dumps(news_map, ensure_ascii=False)}\n순수 JSON으로 응답: {{'시장브리핑': '...', '종목분석': [{{'종목명': '...', '섹터': [], '이유': '...', '분석과정': '...'}}]}}"
+        prompt = f"다음 주도주 뉴스 분석: {json.dumps(news_map, ensure_ascii=False)}\nJSON으로 응답: {{'시장브리핑': '...', '종목분석': [{{'종목명': '...', '섹터': [], '이유': '...', '분석과정': '...'}}]}}"
         response = model.generate_content(prompt)
-        raw_text = re.sub(r"^[^{]*", "", re.sub(r"[^}]*$", "", response.text.strip()))
-        parsed_json = json.loads(raw_text)
-        return parsed_json.get("시장브리핑"), parsed_json.get("종목분석", [])
-    except: return "분석 중 오류 발생", []
+        raw = re.sub(r"^[^{]*", "", re.sub(r"[^}]*$", "", response.text.strip()))
+        parsed = json.loads(raw)
+        return parsed.get("시장브리핑"), parsed.get("종목분석", [])
+    except: return "분석 오류", []
 
-# --- [4] 🚀 키움 API 기반 수급 추출 엔진 ---
+# --- [4] 🚀 키움 API 기반 국내 수급 추출 엔진 (수정 완료) ---
 
 def get_kiwoom_token():
-    """키움증권 REST API 토큰 발급 로직"""
+    """키움증권 REST API 토큰 발급"""
     if not KIWOOM_APP_KEY or not KIWOOM_APP_SECRET: return None
     try:
         url = "https://openapi.kiwoom.com/v1/auth/token"
@@ -363,29 +378,30 @@ def get_kiwoom_token():
     except: return None
 
 def fetch_kiwoom_market_data():
-    """키움 API를 활용해 ETF/ETN 제외, 거래대금 상위 100위 중 4% 상승 종목 추출"""
+    """키움 API로 실시간 수급 종목 가져오기"""
     token = get_kiwoom_token()
-    if not token: return pd.DataFrame()
+    if not token: 
+        st.error("키움 API 인증 실패 - Secrets 설정을 확인하세요.")
+        return pd.DataFrame()
     
     headers = {"Authorization": f"Bearer {token}"}
     all_stocks = []
-    # 001: 코스피, 101: 코스닥 시장 순회
+    # 001: 코스피, 101: 코스닥
     for m_code in ["001", "101"]:
         try:
-            # 거래대금 순위(ranking) API 호출
             url = f"https://openapi.kiwoom.com/v1/quotes/market-ranking?market_code={m_code}&sort_type=2"
             res = requests.get(url, headers=headers, timeout=10)
             data = res.json().get("output", [])
             for item in data:
                 name = item.get("hname", "")
-                # 🌟 [핵심 필터] ETF, ETN, 스팩, 파생상품 완전 제거 로직
-                is_pure = not any(kw in name for kw in ['KODEX', 'TIGER', 'ACE', 'SOL', 'KBSTAR', '스팩', 'ETN', '선물', '인버스', '레버리지'])
+                # 🌟 [필터링] ETF, ETN, 스팩 제외
+                is_pure = not any(kw in name for kw in ['KODEX', 'TIGER', 'ACE', 'SOL', 'KBSTAR', '스팩', 'ETN', '인버스', '레버리지'])
                 if is_pure:
                     all_stocks.append({
                         '시장': '코스피' if m_code == "001" else '코스닥',
                         '종목명': name,
                         '등락률_num': float(item.get("change_rate", 0)),
-                        '거래대금_num': float(item.get("trade_amount", 0)) / 1000000  # 백만 단위 변환
+                        '거래대금_num': float(item.get("trade_amount", 0)) / 1000000 # 백만 단위
                     })
         except: continue
     return pd.DataFrame(all_stocks)
@@ -399,29 +415,37 @@ def format_volume_to_jo_eok(x_million):
 with st.sidebar:
     st.markdown("<h2 style='font-size: 1.5rem; font-weight: 800; color: #0f172a;'>🌐 글로벌 증시</h2>", unsafe_allow_html=True)
     if st.button("🚀 실시간 스캔", use_container_width=True, key="global_btn"): get_global_market_status()
-    for idx in st.session_state.global_indices: st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'])
+    
+    if st.session_state.global_indices:
+        for idx in st.session_state.global_indices: 
+            st.metric(label=idx['name'], value=idx['value'], delta=idx['delta'])
+            
+    st.markdown("<hr style='margin: 20px 0; border-color: #e2e8f0;'>", unsafe_allow_html=True)
+    if st.session_state.global_themes:
+        for t in st.session_state.global_themes:
+            v_c = "#ef4444" if '+' in str(t['delta']) else "#3b82f6"
+            st.markdown(f'<div class="sidebar-theme-row" style="background-color: {t["color"]};"><span style="color: #1e293b;">{t["name"]}</span><span style="color: {v_c};">{t["delta"]}</span></div>', unsafe_allow_html=True)
+    
     st.info(f"📍 **상태:** {st.session_state.global_briefing}")
 
 st.markdown("<div class='main-title'>🔑 Golden Key Pro</div>", unsafe_allow_html=True)
-st.markdown("<div class='sub-title'>키움 API 기반 탑티어 퀀트 & 주도주 분석 대시보드</div>", unsafe_allow_html=True)
+st.markdown("<div class='sub-title'>탑티어 퀀트 트레이딩 & 실시간 주도주 분석 대시보드</div>", unsafe_allow_html=True)
 
 tab_scanner, tab_analysis = st.tabs(["🚀 실시간 주도주 스캐너", "📰 종목별 상세 뉴스"])
 
 with tab_scanner:
     col_main, col_summary = st.columns([7, 3])
     with col_summary:
-        st.markdown("<h3 style='font-size: 1.3rem; font-weight: 800; color: #0f172a;'>🏆 주도 섹터 랭킹</h3>", unsafe_allow_html=True)
+        st.markdown("<h3 style='font-size: 1.3rem; font-weight: 800; margin-bottom: 15px; color: #0f172a;'>🏆 주도 섹터 랭킹</h3>", unsafe_allow_html=True)
         summary_placeholder = st.empty()
         
     with col_main:
         if st.button("🚀 국내 실시간 스캔 및 AI 분석 실행", use_container_width=True):
             with st.spinner("1/2. 키움 API로부터 순수 기업 데이터 수집 중..."):
-                # 키움 API 엔진 가동
                 df = fetch_kiwoom_market_data()
                 if not df.empty:
-                    # 🌟 [로직 적용] 1. 거래대금 순 상위 100위 추출
+                    # 🌟 [수정 로직] 상위 100위 추출 후 등락률 필터링 (테스트를 위해 0% 이상으로 확인 가능)
                     df = df.sort_values(by='거래대금_num', ascending=False).head(100)
-                    # 🌟 [로직 적용] 2. 그중 상승률 4.0% 이상인 종목만 필터링
                     df = df[df['등락률_num'] >= 4.0].sort_values(by='등락률_num', ascending=False)
                 
             if not df.empty:
@@ -436,16 +460,17 @@ with tab_scanner:
             else: st.info("ℹ️ 현재 조건(상위 100위 내 +4% 이상)에 맞는 주도주가 없습니다.")
 
         if st.session_state.market_briefing:
-            st.markdown(f'<div class="briefing-box"><div class="briefing-title">🎙️ AI 트레이더 브리핑</div>{st.session_state.market_briefing}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="briefing-box"><div class="briefing-title">🎙️ AI 트레이더의 오늘의 시장 브리핑</div>{st.session_state.market_briefing}</div>', unsafe_allow_html=True)
 
-        for _, row in st.session_state.domestic_df.iterrows():
-            badges = "".join([f'<span class="sector-badge" style="background:{get_sector_color(s)};">{s}</span>' for s in row['섹터']])
-            rv = round(row['등락률_num'], 2)
-            st.markdown(f'''<div class="stock-card">
-                <div class="left-zone"><span class="market-tag {"market-kospi" if row["시장"]=="코스피" else "market-kosdaq"}">{row["시장"]}</span><span class="stock-name">{row["종목명"]}</span></div>
-                <div class="center-zone">{badges}</div>
-                <div class="right-zone"><span style="color:#ef4444; font-weight:800; font-size:1.15rem;">+{rv}%</span><span>{format_volume_to_jo_eok(row["거래대금_num"])}</span></div>
-            </div>''', unsafe_allow_html=True)
+        if not st.session_state.domestic_df.empty:
+            for _, row in st.session_state.domestic_df.iterrows():
+                badges = "".join([f'<span class="sector-badge" style="background:{get_sector_color(sec)};">{sec}</span>' for sec in row['섹터']])
+                rv = round(row['등락률_num'], 2)
+                st.markdown(f'''<div class="stock-card">
+                    <div class="left-zone"><span class="market-tag {"market-kospi" if row["시장"]=="코스피" else "market-kosdaq"}">{row["시장"]}</span><span class="stock-name">{row["종목명"]}</span></div>
+                    <div class="center-zone">{badges}</div>
+                    <div class="right-zone"><span style="color:#ef4444; font-weight:800; font-size:1.15rem;">+{rv}%</span><span>{format_volume_to_jo_eok(row["거래대금_num"])}</span></div>
+                </div>''', unsafe_allow_html=True)
             
             with summary_placeholder.container():
                 theme_counts = {}
@@ -467,7 +492,7 @@ with tab_analysis:
         for stock, headlines in st.session_state.news_payload.items():
             res = next((i for i in st.session_state.analysis_results if i.get("종목명") == stock), {})
             st.markdown(f'''<div style="background:white; border-radius:12px; padding:22px; margin-bottom:20px; border-left:5px solid #3b82f6;">
-                <h3 style="margin:0;">{stock}</h3><div style="margin-top:15px; padding:14px; background:#eff6ff; border-radius:8px; color:#1e40af; font-weight:700;">💡 핵심 재료: {res.get("이유", "분석 중")}</div>
-                <div style="margin-top:8px; padding:12px; background:#f8fafc; border-radius:8px; color:#475569; font-size:0.9rem;">🧠 AI 추론: {res.get("분석과정", "-")}</div>
+                <h3 style="margin:0;">{stock}</h3><div style="margin-top:15px; padding:14px; background:#eff6ff; border-radius:8px; color:#1e40af; font-weight:700;">💡 핵심 재료: {res.get("이유", "재료 발견 안됨")}</div>
+                <div style="margin-top:8px; padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; color:#475569; font-size:0.9rem;">🧠 AI 분석 추론: {res.get("분석과정", "-")}</div>
                 <hr style="border:0; height:1px; background:#e2e8f0; margin:20px 0;">
                 <ul style="margin:0; padding-left:22px;">{"".join([f"<li>{h}</li>" for h in headlines])}</ul></div>''', unsafe_allow_html=True)
