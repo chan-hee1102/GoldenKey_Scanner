@@ -1,3 +1,16 @@
+import subprocess
+import sys
+
+# [CRITICAL] FinanceDataReader 라이브러리를 최신 버전으로 강제 업데이트
+def update_fdr():
+    try:
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", "finance-datareader"])
+    except Exception as e:
+        print(f"라이브러리 업데이트 실패: {e}")
+
+# 앱 시작 시 즉시 업데이트 실행
+update_fdr()
+
 import streamlit as st
 import pandas as pd
 import requests
