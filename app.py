@@ -21,8 +21,8 @@ if "GEMINI_API_KEY" in st.secrets:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
     genai.configure(api_key=GEMINI_API_KEY)
     try:
-        # 모델 명은 사용자의 환경에 맞춰 gemini-1.5-flash 또는 gemini-2.0-flash 등으로 설정 가능합니다.
-        model = genai.GenerativeModel(model_name='gemini-1.5-flash')
+        # 사용자의 요청에 따라 gemini-2.5-flash 모델로 설정합니다.
+        model = genai.GenerativeModel(model_name='gemini-2.5-flash')
     except:
         model = None
 else:
@@ -447,7 +447,7 @@ def perform_batch_analysis(news_map):
     
     try:
         generation_config = genai.types.GenerationConfig(temperature=0.1, top_p=0.8)
-        analysis_model = genai.GenerativeModel('gemini-1.5-flash', generation_config=generation_config)
+        analysis_model = genai.GenerativeModel('gemini-2.5-flash', generation_config=generation_config)
         
         # 💡 [프롬프트 핵심 개선] 대표님이 요청하신 스페이스X 및 테마 규격화 버전 적용
         prompt = f"""
