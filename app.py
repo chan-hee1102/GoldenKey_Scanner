@@ -1,16 +1,3 @@
-import subprocess
-import sys
-
-# [CRITICAL] FinanceDataReader 라이브러리를 최신 버전으로 강제 업데이트
-def update_fdr():
-    try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-U", "finance-datareader"])
-    except Exception as e:
-        print(f"라이브러리 업데이트 실패: {e}")
-
-# 앱 시작 시 즉시 업데이트 실행
-update_fdr()
-
 import streamlit as st
 import pandas as pd
 import requests
@@ -23,7 +10,6 @@ import json
 import random
 import google.generativeai as genai
 from urllib.parse import quote
-import FinanceDataReader as fdr
 
 # --- [1] 페이지 기본 설정 ---
 st.set_page_config(layout="wide", page_title="Golden Key Pro | 퀀트 대시보드")
@@ -255,7 +241,7 @@ if 'global_themes' not in st.session_state: st.session_state.global_themes = []
 if 'global_briefing' not in st.session_state: st.session_state.global_briefing = "글로벌 스캔을 실행해주세요."
 if 'domestic_df' not in st.session_state: st.session_state.domestic_df = pd.DataFrame()
 if 'analysis_results' not in st.session_state: st.session_state.analysis_results = []
-if 'market_briefing' not in st.session_state: st.session_state.market_briefing = "" 
+if 'market_briefing' not in st.session_state: st.session_state.market_briefing = ""
 if 'news_payload' not in st.session_state: st.session_state.news_payload = {} 
 
 # ==========================================
@@ -273,7 +259,7 @@ def get_sector_color(sector_name):
     for key in SECTOR_COLORS:
         if key in sector_name:
             return SECTOR_COLORS[key]
-    return '#f1f5f9' 
+    return '#f1f5f9'
 
 def force_list(val):
     if isinstance(val, str):
@@ -392,7 +378,7 @@ def fetch_stock_news_headlines(stock_name):
         encoded_kw = quote(f"특징주 {stock_name}", encoding='euc-kr')
         fin_url = f"https://finance.naver.com/news/news_search.naver?q={encoded_kw}"
         res_fin = requests.get(fin_url, headers=headers, timeout=5)
-        res_fin.encoding = 'euc-kr' 
+        res_fin.encoding = 'euc-kr'
         
         if res_fin.status_code == 200:
             soup_fin = BeautifulSoup(res_fin.text, 'html.parser')
@@ -418,7 +404,7 @@ def fetch_stock_news_headlines(stock_name):
                     if text:
                         news_str = f"제목: {text}"
                         if news_str not in titles: titles.append(news_str)
-    except: pass 
+    except: pass
 
     if len(titles) < 3:
         try:
@@ -532,33 +518,44 @@ def perform_batch_analysis(news_map):
     except Exception as e:
         return f"분석 중 오류 발생: {e}", [{"종목명": "시스템 에러", "분석과정": "오류 발생", "섹터": ["오류"], "이유": "AI 분석 실패", "기사날짜": "-"}]
 
-# --- [4] 국내 데이터 크롤링 (FinanceDataReader 기반 업데이트) ---
+# --- [4] 국내 데이터 크롤링 ---
 
-def fetch_market_data_fdr():
-    """FinanceDataReader를 사용하여 주식 목록과 시세를 통합 수집"""
+def fetch_market_data(sosok, market_name):
+    protocol = "https"
+    host = "finance.naver.com"
+    path = "sise/sise_quant.naver"
+    
+    url = f"{protocol}://{host}/{path}?sosok={sosok}"
+    referer_url = f"{protocol}://{host}/"
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': referer_url
+    }
     try:
-        # KOSPI, KOSDAQ 종목 리스트 및 현재가 정보 가져오기
-        df_krx = fdr.StockListing('KRX')
+        res = requests.get(url, headers=headers, timeout=5)
+        res.encoding = 'euc-kr'
+        soup = BeautifulSoup(res.text, 'html.parser')
+        table = soup.find('table', {'class': 'type_2'})
         
-        # 필요한 컬럼만 추출 및 이름 통일
-        # FDR KRX 데이터 컬럼: Symbol, Market, Name, Close, ChangeCode, Changes, ChagesRatio, Open, High, Low, Volume, Amount, MarCap
-        df = df_krx[['Market', 'Name', 'ChagesRatio', 'Amount']].copy()
-        df.columns = ['시장', '종목명', '등락률_num', '거래대금_num']
-        
-        # 시장 명칭 한글화
-        df['시장'] = df['시장'].map({'KOSPI': '코스피', 'KOSDAQ': '코스닥', 'KONEX': '코넥스'}).fillna(df['시장'])
-        
-        # 거래대금 단위 조정 (FDR은 원 단위이므로 백만 단위로 변경하여 기존 포맷 유지)
-        df['거래대금_num'] = df['거래대금_num'] / 1000000
-        
-        return df
-    except Exception as e:
-        st.error(f"[에러] FinanceDataReader 데이터 수집 오류: {e}")
+        if not table:
+            st.error(f"[에러] 네이버 금융 접근 차단됨 ({market_name})")
+            return pd.DataFrame()
+            
+        data = []
+        for tr in table.find_all('tr'):
+            tds = tr.find_all('td')
+            if len(tds) > 5:
+                data.append({'시장': market_name, '종목명': tds[1].text.strip(), '등락률': tds[4].text.strip(), '거래대금': tds[6].text.strip()})
+        return pd.DataFrame(data)
+    except Exception as e: 
+        st.error(f"[에러] {market_name} 데이터 수집 중 통신 오류: {e}")
         return pd.DataFrame()
 
 def format_volume_to_jo_eok(x_million):
     try:
-        val_num = float(x_million)
+        clean_val = str(x_million).replace(',', '')
+        val_num = float(clean_val)
         eok = int(val_num / 100)
         return f"{eok // 10000}조 {eok % 10000}억" if eok >= 10000 else f"{eok}억"
     except: return str(x_million)
@@ -602,20 +599,27 @@ with tab_scanner:
         
     with col_main:
         if st.button("🚀 국내 실시간 스캔 및 AI 분석 실행", use_container_width=True):
-            with st.spinner("1/2. FinanceDataReader 기반 실시간 시장 분석 중..."):
-                # FDR을 통한 통합 데이터 수집
-                df = fetch_market_data_fdr()
+            with st.spinner("1/2. 실시간 시장 수급 분석 중..."):
+                df_k = fetch_market_data(0, '코스피')
+                df_q = fetch_market_data(1, '코스닥')
+                df = pd.concat([df_k, df_q], ignore_index=True)
                 
                 if df.empty:
-                    st.warning("⚠️ 시장 데이터를 가져오지 못했습니다.")
+                    st.warning("⚠️ 네이버 금융에서 데이터를 가져오지 못했습니다.")
                 else:
-                    # 1. 노이즈 제거 (KODEX, 스팩 등)
-                    df = df[~df['종목명'].str.contains('KODEX|TIGER|ACE|SOL|KBSTAR|HANARO|KOSEF|ARIRANG|스팩|ETN|선물|인버스|레버리지|VIX|옵션|마이티|히어로즈|TIMEFOLIO', na=False)]
+                    # 🌟 [수정 핵심] 1. 순수 기업 종목만 남기기 (ETF, ETN, 스팩 등 필터링 강화)
+                    # 제외 키워드: KODEX, TIGER, ACE, SOL, KBSTAR, HANARO, KOSEF, ARIRANG, 스팩, ETN, 선물, 인버스, 레버리지, VIX, 옵션, 마이티, 히어로즈, TIMEFOLIO
+                    filter_keywords = 'KODEX|TIGER|ACE|SOL|KBSTAR|HANARO|KOSEF|ARIRANG|스팩|ETN|선물|인버스|레버리지|VIX|옵션|마이티|히어로즈|TIMEFOLIO'
+                    df = df[~df['종목명'].str.contains(filter_keywords, na=False)]
                     
-                    # 2. 거래대금 순 상위 100위 추출
+                    # 2. 데이터 타입 변환
+                    df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace(r'%|\+', '', regex=True), errors='coerce')
+                    df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
+                    
+                    # 🌟 [수정 핵심] 3. 코스피/코스닥 합산 후 거래대금 순 상위 100위 추출
                     df = df.sort_values(by='거래대금_num', ascending=False).head(100)
                     
-                    # 3. 그중 상승률 4.0% 이상인 종목 필터링 및 정렬
+                    # 🌟 [수정 핵심] 4. 상위 100개 중 상승률 4.0% 이상인 종목 필터링 후 등락률 순 정렬
                     df = df[df['등락률_num'] >= 4.0].sort_values(by='등락률_num', ascending=False)
                     
             if not df.empty:
@@ -663,8 +667,7 @@ with tab_scanner:
                     bg = get_sector_color(sec)
                     badges_html += f'<span class="sector-badge" style="background: {bg}; color: #1e293b;">{sec}</span>'
                 
-                rv = round(row['등락률_num'], 2)
-                rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1e293b")
+                rv = row['등락률_num']; rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1e293b")
                 border_c = "#3b82f6" if rv >= 20.0 else ("#10b981" if rv >= 10.0 else "#cbd5e1")
                 
                 st.markdown(f'''
@@ -687,7 +690,7 @@ with tab_scanner:
                     safe_sectors = force_list(row['섹터'])
                     for sec in safe_sectors:
                         if '(개별주)' in sec or sec == '개별주': 
-                            continue 
+                            continue
                         if sec not in theme_counts: theme_counts[sec] = []
                         theme_counts[sec].append(row)
                 
@@ -699,7 +702,7 @@ with tab_scanner:
                     with st.expander(f"{s_name} ({len(stocks_df)})", expanded=True):
                         for idx_l, (_, s_row) in enumerate(stocks_df.iterrows()):
                             ldr = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
-                            rv = round(s_row["등락률_num"], 2)
+                            rv = s_row["등락률_num"]
                             rate_color = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#334155")
                             
                             st.markdown(f'''
