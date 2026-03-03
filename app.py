@@ -607,14 +607,21 @@ with tab_scanner:
                 if df.empty:
                     st.warning("⚠️ 네이버 금융에서 데이터를 가져오지 못했습니다.")
                 else:
+                    # 1. 노이즈 제거 (KODEX, 스팩 등)
                     df = df[~df['종목명'].str.contains('KODEX|TIGER|ACE|SOL|KBSTAR|HANARO|KOSEF|ARIRANG|스팩|ETN|선물|인버스|레버리지|VIX|옵션|마이티|히어로즈|TIMEFOLIO', na=False)]
+                    
+                    # 2. 데이터 타입 변환
                     df['등락률_num'] = pd.to_numeric(df['등락률'].str.replace(r'%|\+', '', regex=True), errors='coerce')
                     df['거래대금_num'] = pd.to_numeric(df['거래대금'].str.replace(',', ''), errors='coerce')
-                    df = df.sort_values(by='거래대금_num', ascending=False).head(40)
-                    df = df[df['등락률_num'] >= 4.0]
+                    
+                    # 🌟 [수정 로직] 코스피/코스닥 합산 후 거래대금 순 상위 100위 추출
+                    df = df.sort_values(by='거래대금_num', ascending=False).head(100)
+                    
+                    # 🌟 [수정 로직] 그중 상승률 4.0% 이상인 종목 필터링 후 등락률 순 정렬
+                    df = df[df['등락률_num'] >= 4.0].sort_values(by='등락률_num', ascending=False)
                     
             if not df.empty:
-                with st.spinner("2/2. AI 트레이더의 주도장세 및 테마 정밀 분석 중... (약 1분 소요)"):
+                with st.spinner(f"2/2. AI 트레이더의 주도장세 분석 중... ({len(df)}개 종목)"):
                     news_payload = {}
                     progress_bar = st.progress(0)
                     stocks = df['종목명'].tolist()
@@ -640,7 +647,7 @@ with tab_scanner:
                     df['섹터'] = df['종목명'].apply(lambda x: force_list(sector_dict.get(x, ['개별주'])))
                     st.session_state.domestic_df = df
             else:
-                st.info("ℹ️ 현재 조건에 맞는 주도주가 없습니다.")
+                st.info("ℹ️ 현재 조건(상위 100위 내 +4% 이상)에 맞는 주도주가 없습니다.")
 
         if st.session_state.market_briefing:
             st.markdown(f'''
@@ -659,7 +666,7 @@ with tab_scanner:
                     badges_html += f'<span class="sector-badge" style="background: {bg}; color: #1e293b;">{sec}</span>'
                 
                 rv = row['등락률_num']; rt_c = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#1e293b")
-                border_c = "#3b82f6" if rv >= 20.0 else ("#10b981" if rv >= 10.0 else "#cbd5e1") # 등락률에 따라 카드 보더 컬러 변경
+                border_c = "#3b82f6" if rv >= 20.0 else ("#10b981" if rv >= 10.0 else "#cbd5e1")
                 
                 st.markdown(f'''
                 <div class="stock-card" style="border-left-color: {border_c};">
@@ -694,7 +701,6 @@ with tab_scanner:
                         for idx_l, (_, s_row) in enumerate(stocks_df.iterrows()):
                             ldr = '<span class="leader-label">대장</span>' if idx_l == 0 else ''
                             rv = s_row["등락률_num"]
-                            
                             rate_color = "#ef4444" if rv >= 20.0 else ("#22c55e" if rv >= 10.0 else "#334155")
                             
                             st.markdown(f'''
